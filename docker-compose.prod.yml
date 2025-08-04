@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: globegenius
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+  backend:
+    build: ./backend
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://admin:${DB_PASSWORD}@postgres:5432/globegenius
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - FLIGHTLABS_API_KEY=${FLIGHTLABS_API_KEY}
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - app-network
+
+  ml-service:
+    build: ./ml-service
+    restart: always
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

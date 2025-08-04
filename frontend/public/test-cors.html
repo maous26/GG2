@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔥 TEST CORS SIMPLE</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #f0f0f0;
+        }
+        .test { 
+            background: white;
+            margin: 10px 0; 
+            padding: 20px; 
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background: #0056b3; }
+        pre { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            border-radius: 4px; 
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 TEST CORS SANS RATE LIMITER</h1>
+    
+    <div class="test">
+        <h3>🎯 Test Login Direct</h3>
+        <button onclick="testLogin()">TESTER LOGIN</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function testLogin() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '🔄 Test en cours...';
+            
+            try {
+                console.log('🚀 Test login via proxy...');
+                
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        email: 'admin@globegenius.app', 
+                        password: 'GG2024Admin!' 
+                    }),
+                });
+
+                console.log('📊 Response status:', response.status);
+                console.log('📊 Response headers:', Object.fromEntries(response.headers.entries()));
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'test success';
+                    resultDiv.innerHTML = `
+                        <h4>🎉 SUCCÈS ! CORS CORRIGÉ !</h4>
+                        <p><strong>Email:</strong> ${data.user.email}</p>
+                        <p><strong>Type:</strong> ${data.user.subscription_type}</p>
+                        <p><strong>Token:</strong> ${data.token.substring(0, 20)}...</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.className = 'test error';
+                    resultDiv.innerHTML = `
+                        <h4>❌ ÉCHEC</h4>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.className = 'test error';
+                resultDiv.innerHTML = `
+                    <h4>🔥 ERREUR CORS</h4>
+                    <p><strong>Erreur:</strong> ${error.message}</p>
+                    <p>Si vous voyez "Failed to fetch", c'est encore CORS !</p>
+                `;
+                console.error('🔥 Erreur CORS:', error);
+            }
+        }
+
+        // Test automatique au chargement
+        window.onload = function() {
+            setTimeout(() => {
+                testLogin();
+            }, 2000);
+        };
+    </script>
+</body>
+</html>

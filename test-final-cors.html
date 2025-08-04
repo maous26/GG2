@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🎯 Test Final CORS</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .loading { background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>🎯 Test Final - CORS Admin Login</h1>
+    <div id="result">🔄 Test automatique en cours...</div>
+
+    <script>
+        async function testFinalLogin() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('🚀 Tentative de connexion admin...');
+                
+                const response = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@globegenius.app',
+                        password: 'GG2024Admin!'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h2>🎉 SUCCÈS ! CORS RÉSOLU !</h2>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Email:</strong> ${data.user.email}</p>
+                        <p><strong>Type:</strong> ${data.user.subscription_type}</p>
+                        <p><strong>Token généré:</strong> Oui (${data.token.length} caractères)</p>
+                        <hr>
+                        <h3>🎯 L'ACCÈS ADMIN FONCTIONNE MAINTENANT !</h3>
+                        <p>Vous pouvez maintenant aller sur <a href="http://localhost:3000/admin-access" target="_blank">http://localhost:3000/admin-access</a></p>
+                        <p>Et vous connecter avec :</p>
+                        <ul>
+                            <li>Email: admin@globegenius.app</li>
+                            <li>Mot de passe: GG2024Admin!</li>
+                        </ul>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h2>⚠️ Login échoué</h2>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Erreur:</strong> ${data.message || 'Erreur inconnue'}</p>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h2>🔥 ERREUR CORS</h2>
+                    <p><strong>Erreur:</strong> ${error.message}</p>
+                    <p>CORS n'est toujours pas configuré correctement.</p>
+                `;
+            }
+        }
+
+        // Lancer le test automatiquement après 2 secondes
+        setTimeout(testFinalLogin, 2000);
+    </script>
+</body>
+</html>

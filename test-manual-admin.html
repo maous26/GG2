@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Manuel Admin Flow</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f0f8ff; }
+        .step { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #4299e1; }
+        .result { background: #e6fffa; padding: 10px; margin: 10px 0; border-radius: 4px; }
+        button { background: #4299e1; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #3182ce; }
+        pre { background: #f7fafc; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔬 Test Manuel - Flux Admin GlobeGenius</h1>
+    
+    <div class="step">
+        <h3>📍 Étape 1: Test de connexion API</h3>
+        <button onclick="testLogin()">Tester Connexion Admin</button>
+        <div id="loginResult" class="result"></div>
+    </div>
+    
+    <div class="step">
+        <h3>🔄 Étape 2: Test de redirection avec token</h3>
+        <button onclick="testRedirect()">Simuler Redirection</button>
+        <div id="redirectResult" class="result"></div>
+    </div>
+    
+    <div class="step">
+        <h3>📊 Étape 3: Accès direct à la console</h3>
+        <button onclick="directAccess()">Accès Direct Admin</button>
+        <div id="directResult" class="result"></div>
+    </div>
+    
+    <div class="step">
+        <h3>🛠️ Debug Info</h3>
+        <pre id="debugInfo"></pre>
+    </div>
+
+    <script>
+        // Mettre à jour les infos de debug
+        function updateDebugInfo() {
+            document.getElementById('debugInfo').textContent = `
+URL actuelle: ${window.location.href}
+Paramètres: ${window.location.search}
+Hash: ${window.location.hash}
+localStorage token: ${localStorage.getItem('token') ? 'PRÉSENT' : 'ABSENT'}
+localStorage user: ${localStorage.getItem('user') ? 'PRÉSENT' : 'ABSENT'}
+            `;
+        }
+        
+        async function testLogin() {
+            const resultDiv = document.getElementById('loginResult');
+            resultDiv.innerHTML = '⏳ Test en cours...';
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'admin@globegenius.app',
+                        password: 'GG2024Admin!'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.token) {
+                    resultDiv.innerHTML = `
+                        ✅ <strong>Connexion réussie!</strong><br>
+                        Token: ${data.token.substring(0, 30)}...<br>
+                        User: ${data.user.email} (${data.user.subscription_type})
+                    `;
+                    window.testToken = data.token;
+                } else {
+                    resultDiv.innerHTML = `❌ <strong>Échec:</strong> ${data.message || 'Erreur inconnue'}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ <strong>Erreur réseau:</strong> ${error.message}`;
+            }
+            updateDebugInfo();
+        }
+        
+        function testRedirect() {
+            if (!window.testToken) {
+                document.getElementById('redirectResult').innerHTML = '❌ Pas de token - Lancez d\'abord le test de connexion';
+                return;
+            }
+            
+            const redirectUrl = `/?admin=dashboard&token=${window.testToken}`;
+            document.getElementById('redirectResult').innerHTML = `
+                🔄 <strong>Redirection vers:</strong><br>
+                <code>${redirectUrl}</code><br>
+                <button onclick="window.location.href='${redirectUrl}'">Aller vers cette URL</button>
+            `;
+        }
+        
+        function directAccess() {
+            window.location.href = '/admin-access';
+        }
+        
+        // Mettre à jour au chargement
+        updateDebugInfo();
+        setInterval(updateDebugInfo, 1000);
+    </script>
+</body>
+</html> 

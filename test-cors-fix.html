@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🔧 Test CORS Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .loading { background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Test de correction CORS</h1>
+    <button onclick="testLogin()">🎯 Tester Login Admin</button>
+    <button onclick="testPreflight()">🚁 Tester Preflight CORS</button>
+    
+    <div id="result"></div>
+
+    <script>
+        function showResult(message, type = 'loading') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+        }
+
+        async function testPreflight() {
+            showResult('🔄 Test CORS Preflight...', 'loading');
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Request-Method': 'POST',
+                        'Access-Control-Request-Headers': 'Content-Type'
+                    }
+                });
+                
+                showResult(`
+                    <h3>✅ CORS Preflight OK!</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>CORS Headers:</strong></p>
+                    <ul>
+                        <li>Access-Control-Allow-Origin: ${response.headers.get('access-control-allow-origin') || 'Absent'}</li>
+                        <li>Access-Control-Allow-Methods: ${response.headers.get('access-control-allow-methods') || 'Absent'}</li>
+                        <li>Access-Control-Allow-Headers: ${response.headers.get('access-control-allow-headers') || 'Absent'}</li>
+                    </ul>
+                `, 'success');
+            } catch (error) {
+                showResult(`
+                    <h3>❌ CORS Preflight Échoué</h3>
+                    <p><strong>Erreur:</strong> ${error.message}</p>
+                `, 'error');
+            }
+        }
+
+        async function testLogin() {
+            showResult('🔄 Test Login...', 'loading');
+            
+            try {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@globegenius.app',
+                        password: 'GG2024Admin!'
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`
+                        <h3>🎉 LOGIN RÉUSSI !</h3>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Email:</strong> ${data.user.email}</p>
+                        <p><strong>Type:</strong> ${data.user.subscription_type}</p>
+                        <p><strong>Token:</strong> ${data.token.substring(0, 50)}...</p>
+                        <hr>
+                        <p>🎯 <strong>CORS est maintenant corrigé ! L'accès admin va fonctionner !</strong></p>
+                    `, 'success');
+                } else {
+                    showResult(`
+                        <h3>⚠️ Login échoué (mais CORS OK)</h3>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Erreur:</strong> ${data.message || 'Erreur inconnue'}</p>
+                    `, 'error');
+                }
+            } catch (error) {
+                showResult(`
+                    <h3>🔥 ERREUR DE CONNEXION</h3>
+                    <p><strong>Erreur:</strong> ${error.message}</p>
+                    <p>CORS n'est toujours pas configuré correctement.</p>
+                `, 'error');
+            }
+        }
+
+        // Test automatique au chargement
+        window.onload = function() {
+            setTimeout(() => {
+                testPreflight();
+            }, 1000);
+        };
+    </script>
+</body>
+</html>

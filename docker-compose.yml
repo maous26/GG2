@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6-jammy
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: globegenius123
+      MONGO_INITDB_DATABASE: globegenius
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly no
+
+  backend:
+    build: ./backend
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - BREVO_API_KEY=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
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://admin:globegenius123@mongodb:27017/globegenius?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-jwt-secret-key
+      - FLIGHTLABS_API_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiI0IiwianRpIjoiOGYxZDQwMjQ2YTljMzcxODJlMTU5ZTU0ZDU1NWRiZGE3Zjc4ZWQxYzQ0MjFiYTM1ZjM1YTBmY2RkNWMzNDAzZjI4MTQ0MTQyYzFiMDQ2NWMiLCJpYXQiOjE3NTM5OTM0MTYsIm5iZiI6MTc1Mzk5MzQxNiwiZXhwIjoxNzg1NTI5NDE2LCJzdWIiOiIyNTI2MCIsInNjb3BlcyI6W119.nQXyuzWrF9BwqoK9wY7RFu-90esaoP9l6-YdKH1Meh0wIgXqGhL7rm76FhxW1hvfMH_narrN5KxWiUt3fyBKaA
+      - GEMINI_API_KEY=AIzaSyDQZMYZJ2XRzZk9tHx_LcFvxkH-MgzQDqM
+      - OPENAI_API_KEY=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
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+
+  ml-service:
+    build: ./ml-service
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-service:/app
+
+volumes:
+  mongodb_data:
+  redis_data:

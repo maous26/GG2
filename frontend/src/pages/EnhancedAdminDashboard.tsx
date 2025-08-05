@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FinancialTab, FlightTab } from '../components/KPITabs';
+import AdaptivePricingDashboard from '../components/AdaptivePricingDashboard';
 
 // User Management Interfaces
 interface AdminUser {
@@ -458,6 +459,7 @@ const EnhancedAdminDashboard: React.FC = () => {
         <div className="flex space-x-8">
           {[
             { id: 'overview', name: 'Vue d\'ensemble', icon: '📊' },
+            { id: 'adaptive', name: 'Prix Adaptatif IA', icon: '🧠' },
             { id: 'users', name: 'Utilisateurs', icon: '👥' },
             { id: 'flights', name: 'Vols & Routes', icon: '✈️' },
             { id: 'financial', name: 'Finances', icon: '💰' },
@@ -743,17 +745,17 @@ const EnhancedAdminDashboard: React.FC = () => {
                               }}
                               className="text-blue-600 hover:text-blue-900 mr-4"
                             >
-                              👁️ Voir
-                            </button>
-                            <button
-                              onClick={() => {
-                                setSelectedUser(user);
-                                setShowUserModal(true);
-                              }}
-                              className="text-green-600 hover:text-green-900"
-                            >
                               ⚙️ Gérer
                             </button>
+                            {user.subscription_type !== 'enterprise' && (
+                              <button
+                                onClick={() => deleteUser(user.id)}
+                                className="text-red-600 hover:text-red-900"
+                                title="Supprimer l'utilisateur"
+                              >
+                                🗑️ Supprimer
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))
@@ -959,6 +961,11 @@ const EnhancedAdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Adaptive Pricing Tab */}
+        {activeTab === 'adaptive' && (
+          <AdaptivePricingDashboard />
         )}
 
         {/* Financial Tab */}

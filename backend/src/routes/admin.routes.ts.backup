@@ -951,140 +951,237 @@ router.get('/kpis/realtime', asyncHandler(async (req: Request, res: Response) =>
 }));
 
 // ============================================
-// SIMPLIFIED ADAPTIVE PRICING ENDPOINTS
+// ADAPTIVE PRICING DASHBOARD ENDPOINTS
 // ============================================
 
-// Get adaptive pricing system overview (simplified)
+// Get adaptive pricing system overview
 router.get('/adaptive-pricing', asyncHandler(async (req: Request, res: Response) => {
   try {
-    // Get basic system overview
-    const totalRoutes = await Route.countDocuments();
-    const totalAlerts = await Alert.countDocuments();
-    const recentAlerts = await Alert.find({
-      detectedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-    }).limit(50);
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-    // Basic validation statistics
+    // Get strategic routes with performance metrics
+    const strategicRoutes = await StrategicRoute.find({}).sort({ tier: 1 });
+    
+    // Get recent price predictions
+    const pricePredictions = await PricePrediction.find({})
+      .sort({ createdAt: -1 })
+      .limit(10);
+
+    // Calculate alert validation statistics
+    const recentAlerts = await Alert.find({
+      detectedAt: { $gte: oneHourAgo },
+      validationScore: { $exists: true }
+    });
+
     const validatedAlerts = recentAlerts.filter(alert => alert.recommendation === 'SEND');
     const rejectedAlerts = recentAlerts.filter(alert => alert.recommendation === 'REJECT');
     
-    const validationMethods = {
-      statistical: recentAlerts.filter(alert => alert.validationMethod === 'STATISTICAL').length,
-      predictive: recentAlerts.filter(alert => alert.validationMethod === 'PREDICTIVE').length,
-      contextual: recentAlerts.filter(alert => alert.validationMethod === 'CONTEXTUAL').length
-    };
+    const validationMethods: Record<string, number> = { statistical: 0, predictive: 0, contextual: 0 };
+    recentAlerts.forEach(alert => {
+      if (alert.validationMethod) {
+        const method = alert.validationMethod.toLowerCase();
+        if (method in validationMethods) {
+          validationMethods[method] = (validationMethods[method] || 0) + 1;
+        }
+      }
+    });
 
     const avgValidationScore = recentAlerts.length > 0 
       ? recentAlerts.reduce((sum, alert) => sum + (alert.validationScore || 0), 0) / recentAlerts.length
       : 0;
 
-    // Basic response
-    res.json({
-      systemOverview: {
-        transformationStatus: 'ACTIVE',
-        adaptiveSystem: 'OPERATIONAL',
-        totalRoutes,
-        totalAlerts,
-        avgValidationScore,
-        aiValidationRate: (validatedAlerts.length / Math.max(recentAlerts.length, 1)) * 100
+    // Calculate summary statistics
+    const totalRoutes = await Route.countDocuments();
+    const adaptiveRoutes = strategicRoutes.length;
+    const avgAdaptiveThreshold = strategicRoutes.length > 0
+      ? strategicRoutes.reduce((sum: number, route: any) => sum + (route.adaptiveThresholds?.current || 0), 0) / strategicRoutes.length
+      : 0;
+
+    // Calculate total savings from adaptive system
+    const totalSavings = await Alert.aggregate([
+      {
+        $match: {
+          detectedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // Last 30 days
+          adaptiveThreshold: { $exists: true }
+        }
       },
-      strategicRoutes: [
-        {
-          _id: 'demo1',
-          hubAirport: 'CDG',
-          routeName: 'CDG → JFK',
-          tier: 1,
-          adaptiveThreshold: 25,
-          isActive: true,
-          performance: { roi: 4.2 }
+      {
+        $group: {
+          _id: null,
+          totalSavings: {
+            $sum: {
+              $multiply: [
+                "$price",
+                { $divide: ["$discountPercentage", 100] }
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const aiValidationRate = recentAlerts.length > 0
+      ? (validatedAlerts.length / recentAlerts.length) * 100
+      : 0;
+
+    res.json({
+      summary: {
+        totalRoutes,
+        adaptiveRoutes,
+        avgAdaptiveThreshold,
+        aiValidationRate,
+        totalSavings: totalSavings[0]?.totalSavings || 0
+      },
+      strategicRoutes: strategicRoutes.map((route: any) => ({
+        _id: route._id,
+        hubAirport: route.hub || route.hubAirport,
+        routeName: `${route.origin} → ${route.destination}`,
+        tier: route.tier,
+        adaptiveThreshold: route.adaptiveThresholds?.current || route.adaptiveThreshold,
+        performance: route.performance,
+        lastOptimized: route.metadata?.lastOptimized || route.lastOptimized,
+        isActive: route.isActive !== false
+      })),
+      pricePredictions: pricePredictions.map((prediction: any) => ({
+        _id: prediction._id,
+        route: `${prediction.origin} → ${prediction.destination}`,
+        predictedPrice: prediction.predictedPrice,
+        confidence: prediction.confidence,
+        marketTrend: prediction.recommendation || 'MONITOR',
+        seasonalFactor: prediction.seasonalFactor,
+        features: prediction.features,
+        createdAt: prediction.createdAt
+      })),
+      alertValidation: {
+        lastHour: {
+          total: recentAlerts.length,
+          validated: validatedAlerts.length,
+          rejected: rejectedAlerts.length,
+          validationRate: aiValidationRate
         },
-        {
-          _id: 'demo2', 
-          hubAirport: 'CDG',
-          routeName: 'CDG → LAX',
-          tier: 1,
-          adaptiveThreshold: 27,
-          isActive: true,
-          performance: { roi: 3.8 }
-        }
-      ],
-      pricePredictions: [
-        {
-          _id: 'pred1',
-          route: 'CDG → JFK',
-          predictedPrice: { '7days': 450 },
-          confidence: { '7days': 85 },
-          marketTrend: 'MONITOR'
-        }
-      ],
-      validationStatistics: {
-        totalProcessed: recentAlerts.length,
-        validated: validatedAlerts.length,
-        rejected: rejectedAlerts.length,
-        methods: validationMethods,
-        avgScore: avgValidationScore
+        validationMethods,
+        avgValidationScore
       }
     });
+
   } catch (error) {
-    logger.error('Error in adaptive pricing overview:', error);
-    res.status(500).json({ message: 'Error fetching adaptive pricing data' });
+    logger.error('Error fetching adaptive pricing data:', error);
+    res.status(500).json({ 
+      message: 'Error fetching adaptive pricing data', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 }));
 
-// Route optimization endpoint (simplified)
+// Optimize a specific strategic route
 router.post('/strategic-routes/:routeId/optimize', asyncHandler(async (req: Request, res: Response) => {
   try {
     const { routeId } = req.params;
     
-    // Simulate optimization
-    logger.info(`Optimizing route ${routeId}`);
+    const route = await StrategicRoute.findById(routeId);
+    if (!route) {
+      return res.status(404).json({ message: 'Strategic route not found' });
+    }
+
+    // Use intelligent pricing service to optimize route performance
+    await IntelligentPricingService.optimizeRoutePerformance();
     
+    // Reload the route to get updated values
+    const updatedRoute = await StrategicRoute.findById(routeId);
+    if (!updatedRoute) {
+      return res.status(404).json({ message: 'Route not found after optimization' });
+    }
+
+    // Update last optimized timestamp
+    updatedRoute.metadata = updatedRoute.metadata || {};
+    updatedRoute.metadata.lastOptimized = new Date();
+    await updatedRoute.save();
+    await route.save();
+
+    logger.info(`Route ${route.routeName} optimized: new threshold ${optimizedThreshold}%`);
+
     res.json({
-      success: true,
-      message: 'Route optimization completed',
+      message: 'Route optimized successfully',
       routeId,
-      newThreshold: 25.5,
-      optimizedAt: new Date()
+      newThreshold: optimizedThreshold,
+      optimizedAt: route.lastOptimized
     });
+
   } catch (error) {
     logger.error('Error optimizing route:', error);
-    res.status(500).json({ message: 'Error optimizing route' });
+    res.status(500).json({ 
+      message: 'Error optimizing route', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 }));
 
-// Route analytics endpoint (simplified)
+// Get detailed route analytics
 router.get('/strategic-routes/:routeId/analytics', asyncHandler(async (req: Request, res: Response) => {
   try {
     const { routeId } = req.params;
+    const { days = 30 } = req.query;
     
-    // Get alerts for this route (approximation)
+    const route = await StrategicRoute.findById(routeId);
+    if (!route) {
+      return res.status(404).json({ message: 'Strategic route not found' });
+    }
+
+    const startDate = new Date(Date.now() - Number(days) * 24 * 60 * 60 * 1000);
+    
+    // Get alerts for this route
+    const routeParts = route.routeName.split(' → ');
+    const origin = routeParts[0];
+    const destination = routeParts[1];
+
     const alerts = await Alert.find({
-      $or: [
-        { route: new RegExp(routeId, 'i') },
-        { origin: 'CDG', destination: 'JFK' } // Demo data
-      ]
-    }).limit(10);
+      origin,
+      destination,
+      detectedAt: { $gte: startDate }
+    }).sort({ detectedAt: -1 });
+
+    // Calculate performance metrics
+    const totalAlerts = alerts.length;
+    const validatedAlerts = alerts.filter(alert => alert.recommendation === 'SEND');
+    const avgDiscount = alerts.length > 0 
+      ? alerts.reduce((sum, alert) => sum + alert.discountPercentage, 0) / alerts.length
+      : 0;
+
+    // Threshold optimization history
+    const thresholdHistory = alerts.map(alert => ({
+      date: alert.detectedAt,
+      threshold: alert.adaptiveThreshold || route.adaptiveThreshold.current,
+      validationScore: alert.validationScore || 0,
+      recommendation: alert.recommendation || 'UNKNOWN'
+    }));
 
     res.json({
-      routeId,
-      routeName: 'CDG → JFK',
-      hubAirport: 'CDG',
-      tier: 1,
-      adaptiveThreshold: 25,
-      recentAlerts: alerts.map(alert => ({
-        _id: alert._id,
-        route: `${alert.origin} → ${alert.destination}`,
-        price: alert.price,
-        discountPercentage: alert.discountPercentage,
-        detectedAt: alert.detectedAt,
-        validationScore: alert.validationScore || 85,
-        recommendation: alert.recommendation || 'SEND',
-        threshold: alert.adaptiveThreshold || 25
-      }))
+      route: {
+        _id: route._id,
+        routeName: route.routeName,
+        hubAirport: route.hubAirport,
+        tier: route.tier,
+        adaptiveThreshold: route.adaptiveThreshold,
+        lastOptimized: route.lastOptimized
+      },
+      analytics: {
+        period: { days: Number(days), startDate },
+        totalAlerts,
+        validatedAlerts: validatedAlerts.length,
+        validationRate: totalAlerts > 0 ? (validatedAlerts.length / totalAlerts) * 100 : 0,
+        avgDiscount,
+        thresholdHistory: thresholdHistory.slice(-50) // Last 50 entries
+      },
+      alerts: alerts.slice(0, 20) // Recent 20 alerts
     });
+
   } catch (error) {
     logger.error('Error fetching route analytics:', error);
-    res.status(500).json({ message: 'Error fetching route analytics' });
+    res.status(500).json({ 
+      message: 'Error fetching route analytics', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 }));
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import EnhancedAdminDashboard from './pages/EnhancedAdminDashboard';
+import AdaptivePricingUserView from './components/AdaptivePricingUserView';
 
 // AdminDashboard wrapper component
 const AdminDashboard: React.FC = () => {
@@ -1704,6 +1705,7 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
   const [alerts, setAlerts] = useState<any[]>([]);
   const [userStats, setUserStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
     fetchDashboardData();
@@ -1768,7 +1770,7 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
         <div style={{
- backgroundColor: 'white',
+          backgroundColor: 'white',
           borderRadius: '12px',
           padding: '2rem',
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
@@ -1814,161 +1816,246 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Stats Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: '1.5rem',
-          marginBottom: '2rem'
-        }}>
+          {/* Navigation Tabs */}
           <div style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '12px',
-            textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            borderTop: '1px solid #e2e8f0',
+            marginTop: '2rem',
+            paddingTop: '1rem'
           }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#16a34a', marginBottom: '1rem' }}>
-              🚀 Alertes Reçues
-            </h3>
-            <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#16a34a', margin: '0.5rem 0' }}>
-              {alerts.length}
-            </p>
-            <p style={{ color: '#64748b', margin: 0 }}>
-              Ce mois
-            </p>
-          </div>
-          
-          <div style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '12px',
-            textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#d97706', marginBottom: '1rem' }}>
-              💰 Économies Potentielles
-            </h3>
-            <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#d97706', margin: '0.5rem 0' }}>
-              €{userStats?.totalSavings || 0}
-            </p>
-            <p style={{ color: '#64748b', margin: 0 }}>
-              Depuis inscription
-            </p>
-          </div>
-          
-          <div style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '12px',
-            textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#3b82f6', marginBottom: '1rem' }}>
-              ✈️ Destinations Surveillées
-            </h3>
-            <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#3b82f6', margin: '0.5rem 0' }}>
-              {userStats?.watchedDestinations || 0}
-            </p>
-            <p style={{ color: '#64748b', margin: 0 }}>
-              Routes actives
-            </p>
-          </div>
-          
-          <div style={{
-            backgroundColor: 'white',
-            padding: '2rem',
-            borderRadius: '12px',
-            textAlign: 'center',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#be185d', marginBottom: '1rem' }}>
-              📊 Profile Completeness
-            </h3>
-            <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#be185d', margin: '0.5rem 0' }}>
-              {userStats?.profileCompleteness || 100}%
-            </p>
-            <p style={{ color: '#64748b', margin: 0 }}>
-              Optimisation
-            </p>
-          </div>
-        </div>
-
-        {/* Recent Alerts */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '2rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-        }}>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
-            📬 Dernières Alertes
-          </h2>
-          
-          {alerts.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {alerts.map((alert, index) => (
-                <div 
-                  key={index}
+            <div style={{ display: 'flex', gap: '2rem' }}>
+              {[
+                { id: 'overview', name: 'Vue d\'ensemble', icon: '📊' },
+                { id: 'adaptive', name: 'Prix Adaptatif IA', icon: '🧠' },
+                { id: 'preferences', name: 'Préférences', icon: '⚙️' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                   style={{
-                    backgroundColor: '#f8fafc',
-                    padding: '1.5rem',
-                    borderRadius: '8px',
-                    borderLeft: '4px solid #10b981'
+                    padding: '8px 16px',
+                    border: 'none',
+                    background: 'none',
+                    borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
+                    color: activeTab === tab.id ? '#3b82f6' : '#64748b',
+                    cursor: 'pointer',
+                    fontWeight: '500',
+                    fontSize: '1rem'
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: '0 0 0.5rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
-                        ✈️ {alert.route || 'CDG → JFK'}
-                      </h3>
-                      <p style={{ margin: '0 0 0.5rem 0', color: '#16a34a', fontWeight: 'bold' }}>
-                        💰 Économie: €{alert.savings || Math.floor(Math.random() * 200 + 50)}
-                      </p>
-                      <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-                        {alert.description || 'Erreur de prix détectée - Prix exceptionnel disponible'}
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                        {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : 'Aujourd\'hui'}
-                      </div>
-                      <button
-                        style={{
-                          marginTop: '0.5rem',
-                          padding: '6px 12px',
-                          backgroundColor: '#ff6b35',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontSize: '0.8rem',
-                          cursor: 'pointer'
-                        }}
-                        onClick={() => alert('Redirection vers la réservation...')}
-                      >
-                        Réserver
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  {tab.icon} {tab.name}
+                </button>
               ))}
             </div>
-          ) : (
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <>
+            {/* Stats Cards */}
             <div style={{
-              textAlign: 'center',
-              padding: '3rem',
-              color: '#6b7280'
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+              gap: '1.5rem',
+              marginBottom: '2rem'
             }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
-              <h3 style={{ margin: '0 0 0.5rem 0' }}>Aucune alerte pour le moment</h3>
-              <p style={{ margin: 0 }}>
-                Vos préférences de voyage sont configurées. Les alertes arriveront bientôt !
+              <div style={{
+                backgroundColor: 'white',
+                padding: '2rem',
+                borderRadius: '12px',
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#16a34a', marginBottom: '1rem' }}>
+                  🚀 Alertes Reçues
+                </h3>
+                <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#16a34a', margin: '0.5rem 0' }}>
+                  {alerts.length}
+                </p>
+                <p style={{ color: '#64748b', margin: 0 }}>
+                  Ce mois
+                </p>
+              </div>
+              
+              <div style={{
+                backgroundColor: 'white',
+                padding: '2rem',
+                borderRadius: '12px',
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#d97706', marginBottom: '1rem' }}>
+                  💰 Économies Potentielles
+                </h3>
+                <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#d97706', margin: '0.5rem 0' }}>
+                  €{userStats?.totalSavings || 0}
+                </p>
+                <p style={{ color: '#64748b', margin: 0 }}>
+                  Depuis inscription
+                </p>
+              </div>
+              
+              <div style={{
+                backgroundColor: 'white',
+                padding: '2rem',
+                borderRadius: '12px',
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#3b82f6', marginBottom: '1rem' }}>
+                  ✈️ Destinations Surveillées
+                </h3>
+                <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#3b82f6', margin: '0.5rem 0' }}>
+                  {userStats?.watchedDestinations || 0}
+                </p>
+                <p style={{ color: '#64748b', margin: 0 }}>
+                  Routes actives
+                </p>
+              </div>
+              
+              <div style={{
+                backgroundColor: 'white',
+                padding: '2rem',
+                borderRadius: '12px',
+                textAlign: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#be185d', marginBottom: '1rem' }}>
+                  📊 Profile Completeness
+                </h3>
+                <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#be185d', margin: '0.5rem 0' }}>
+                  {userStats?.profileCompleteness || 100}%
+                </p>
+                <p style={{ color: '#64748b', margin: 0 }}>
+                  Optimisation
+                </p>
+              </div>
+            </div>
+
+            {/* Recent Alerts */}
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '2rem',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}>
+              <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
+                📬 Dernières Alertes
+              </h2>
+              
+              {alerts.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {alerts.map((alert, index) => (
+                    <div 
+                      key={index}
+                      style={{
+                        backgroundColor: '#f8fafc',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        borderLeft: '4px solid #10b981'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                        <div style={{ flex: 1 }}>
+                          <h3 style={{ margin: '0 0 0.5rem 0', color: '#1e293b', fontSize: '1.1rem' }}>
+                            ✈️ {alert.route || 'CDG → JFK'}
+                          </h3>
+                          <p style={{ margin: '0 0 0.5rem 0', color: '#16a34a', fontWeight: 'bold' }}>
+                            💰 Économie: €{alert.savings || Math.floor(Math.random() * 200 + 50)}
+                          </p>
+                          <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
+                            {alert.description || 'Erreur de prix détectée - Prix exceptionnel disponible'}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                            {alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : 'Aujourd\'hui'}
+                          </div>
+                          <button
+                            style={{
+                              marginTop: '0.5rem',
+                              padding: '6px 12px',
+                              backgroundColor: '#ff6b35',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '0.8rem',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => alert('Redirection vers la réservation...')}
+                          >
+                            Réserver
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '3rem',
+                  color: '#6b7280'
+                }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📭</div>
+                  <h3 style={{ margin: '0 0 0.5rem 0' }}>Aucune alerte pour le moment</h3>
+                  <p style={{ margin: 0 }}>
+                    Vos préférences de voyage sont configurées. Les alertes arriveront bientôt !
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Adaptive Pricing Tab */}
+        {activeTab === 'adaptive' && (
+          <AdaptivePricingUserView user={{
+            email: user.email,
+            subscription_type: user.subscription_type || 'premium'
+          }} />
+        )}
+
+        {/* User Preferences Tab */}
+        {activeTab === 'preferences' && (
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '2rem',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          }}>
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
+              ⚙️ Préférences de Voyage
+            </h2>
+            
+            <div style={{
+              backgroundColor: '#fef3c7',
+              border: '1px solid #f59e0b',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginBottom: '2rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '1.2rem' }}>🧠</span>
+                <h3 style={{ margin: 0, color: '#92400e', fontSize: '1.1rem' }}>Système de Prix Adaptatif Activé</h3>
+              </div>
+              <p style={{ margin: 0, color: '#92400e', fontSize: '0.9rem' }}>
+                Votre compte Premium utilise maintenant notre IA pour ajuster automatiquement vos seuils de prix. 
+                Consultez l'onglet "Prix Adaptatif IA" pour plus de détails sur votre configuration personnalisée.
               </p>
             </div>
-          )}
-        </div>
+
+            <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔧</div>
+              <h3 style={{ margin: '0 0 0.5rem 0' }}>Configuration Intelligente</h3>
+              <p style={{ margin: 0 }}>
+                Vos préférences sont maintenant gérées par notre système adaptatif. 
+                L'IA optimise automatiquement vos alertes pour maximiser vos économies.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -49,7 +49,20 @@ const alertSchema = new mongoose_1.Schema({
             sentAt: { type: Date, default: Date.now },
             opened: { type: Boolean, default: false },
             clicked: { type: Boolean, default: false }
-        }]
+        }],
+    // Intelligence-based validation fields
+    validationScore: { type: Number, min: 0, max: 100 },
+    adaptiveThreshold: { type: Number, min: 0, max: 100 },
+    recommendation: {
+        type: String,
+        enum: ['SEND', 'REVIEW', 'REJECT']
+    },
+    validationMethod: {
+        type: String,
+        enum: ['STATISTICAL', 'PREDICTIVE', 'CONTEXTUAL']
+    },
+    priceHistory: [{ type: Number }],
+    seasonalAdjustment: { type: Number }
 });
 const Alert = mongoose_1.default.model('Alert', alertSchema);
 exports.Alert = Alert;

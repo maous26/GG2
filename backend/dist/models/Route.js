@@ -60,7 +60,7 @@ const RouteSchema = new mongoose_1.Schema({
     scanFrequencyHours: {
         type: Number,
         required: true,
-        enum: [2, 4, 6, 12]
+        enum: [2, 3, 4, 6, 12]
     },
     isActive: {
         type: Boolean,

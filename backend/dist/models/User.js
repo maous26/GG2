@@ -42,6 +42,11 @@ const userSchema = new mongoose_1.Schema({
         lowercase: true,
         trim: true
     },
+    name: {
+        type: String,
+        required: true,
+        trim: true
+    },
     password: {
         type: String,
         required: true
@@ -81,9 +86,9 @@ const userSchema = new mongoose_1.Schema({
         travelPeriod: {
             flexible: { type: Boolean, default: true },
             specificPeriods: [{
-                    startDate: Date,
-                    endDate: Date,
-                    name: String
+                    type: { type: String, enum: ['month', 'season'] },
+                    value: { type: String },
+                    name: { type: String }
                 }],
             avoidPeriods: [{
                     startDate: Date,

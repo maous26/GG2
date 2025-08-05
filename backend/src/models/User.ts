@@ -25,9 +25,9 @@ export interface IUser extends Document {
     travelPeriod?: {
       flexible: boolean; // true = n'importe quand, false = période précise
       specificPeriods?: {
-        startDate: Date;
-        endDate: Date;
-        name?: string; // Ex: 'Vacances d'été', 'Congés de Noël'
+        type: 'month' | 'season';
+        value: string;
+        name: string;
       }[];
       avoidPeriods?: {
         startDate: Date;
@@ -62,6 +62,11 @@ const userSchema = new Schema({
     required: true,
     unique: true,
     lowercase: true,
+    trim: true
+  },
+  name: {
+    type: String,
+    required: true,
     trim: true
   },
   password: {
@@ -107,9 +112,9 @@ const userSchema = new Schema({
     travelPeriod: {
       flexible: { type: Boolean, default: true },
       specificPeriods: [{
-        startDate: Date,
-        endDate: Date,
-        name: String
+        type: { type: String, enum: ['month', 'season'] },
+        value: { type: String },
+        name: { type: String }
       }],
       avoidPeriods: [{
         startDate: Date,
@@ -146,4 +151,4 @@ userSchema.index({ 'preferences.additionalAirports': 1 });
 userSchema.index({ 'preferences.dreamDestinations.airportCode': 1 });
 
 const User = mongoose.model<IUser>('User', userSchema);
-export default User; 
+export default User;

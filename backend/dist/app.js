@@ -11,9 +11,17 @@ const compression_1 = __importDefault(require("compression"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const ioredis_1 = __importDefault(require("ioredis"));
 const node_cron_1 = __importDefault(require("node-cron"));
-const winston_1 = __importDefault(require("winston"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const database_1 = require("./config/database");
+// Enhanced middleware imports
+const logger_1 = require("./config/logger");
+Object.defineProperty(exports, "logger", { enumerable: true, get: function () { return logger_1.logger; } });
+const errorHandler_middleware_1 = require("./middleware/errorHandler.middleware");
+const security_middleware_1 = require("./middleware/security.middleware");
+const performance_middleware_1 = __importDefault(require("./middleware/performance.middleware"));
+const validation_middleware_1 = require("./middleware/validation.middleware");
+const databaseHealth_service_1 = __importDefault(require("./services/databaseHealth.service"));
+const securityAudit_service_1 = __importDefault(require("./services/securityAudit.service"));
 // Import routes
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const alert_routes_1 = __importDefault(require("./routes/alert.routes"));
@@ -21,8 +29,6 @@ const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const ubscription_routes_1 = __importDefault(require("./routes/ubscription.routes"));
 const scanning_routes_1 = __importDefault(require("./routes/scanning.routes"));
 const user_routes_1 = __importDefault(require("./routes/user.routes"));
-// import { AIAgent } from './services/aiAgentService'; // Disabled - not available
-// import logger from 'winston'; // Using console instead to avoid conflict
 const createTestAlerts_1 = require("./utils/createTestAlerts");
 // Load environment variables
 dotenv_1.default.config();
@@ -31,24 +37,19 @@ const app = (0, express_1.default)();
 exports.app = app;
 app.set('trust proxy', true); // Enable trust proxy for all proxies
 const PORT = process.env.PORT || 3001;
-// Logger configuration
-const logger = winston_1.default.createLogger({
-    level: 'info',
-    format: winston_1.default.format.json(),
-    transports: [
-        new winston_1.default.transports.File({ filename: 'error.log', level: 'error' }),
-        new winston_1.default.transports.File({ filename: 'combined.log' }),
-        new winston_1.default.transports.Console({
-            format: winston_1.default.format.simple()
-        })
-    ]
-});
-exports.logger = logger;
 // Connect to MongoDB
 (0, database_1.connectDB)();
+// Setup database monitoring
+databaseHealth_service_1.default.setupMonitoring();
 // Redis connection (still using Redis for caching)
 const redis = new ioredis_1.default(process.env.REDIS_URL || 'redis://localhost:6379');
 exports.redis = redis;
+// Enhanced security and performance middleware
+app.use(security_middleware_1.securityHeaders);
+app.use(security_middleware_1.requestLogger);
+app.use(security_middleware_1.suspiciousActivityDetector);
+app.use(performance_middleware_1.default.middleware());
+app.use(security_middleware_1.speedLimiter);
 // CORS Configuration - MUST be first
 app.use((0, cors_1.default)({
     origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
@@ -59,21 +60,17 @@ app.use((0, cors_1.default)({
 // Middleware
 app.use((0, helmet_1.default)());
 app.use((0, compression_1.default)());
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: true }));
-// Rate limiting (after CORS) - TEMPORARILY DISABLED FOR DEBUG
-/*
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  skip: (req) => {
-    // Skip rate limiting for OPTIONS requests (CORS preflight)
-    return req.method === 'OPTIONS';
-  }
-});
-app.use('/api/', limiter);
-*/
-console.log('🚨 Rate limiter DISABLED for debugging CORS issues');
+app.use(express_1.default.json({ limit: '10mb' }));
+app.use(express_1.default.urlencoded({ extended: true, limit: '10mb' }));
+app.use(validation_middleware_1.sanitize);
+// Enhanced rate limiting with granular controls
+app.use('/api/auth', security_middleware_1.authRateLimit);
+app.use('/api/admin/kpis', security_middleware_1.adminDashboardRateLimit); // More generous for dashboard
+app.use('/api/admin/stats', security_middleware_1.adminDashboardRateLimit); // More generous for stats
+app.use('/api/admin/metrics', security_middleware_1.adminDashboardRateLimit); // More generous for metrics
+app.use('/api/admin/security', security_middleware_1.adminDashboardRateLimit); // More generous for security dashboard
+app.use('/api/admin', security_middleware_1.adminRateLimit); // Standard admin rate limit for other operations
+app.use('/api/', security_middleware_1.apiRateLimit);
 // Routes
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/alerts', alert_routes_1.default);
@@ -333,28 +330,86 @@ app.get('/admin-access', (req, res) => {
   `);
 });
 // Stats endpoint
-// Health check
+// Enhanced health check endpoints
 app.get('/health', async (req, res) => {
-    const mongoStatus = mongoose_1.default.connection.readyState === 1 ? 'connected' : 'disconnected';
-    const redisStatus = redis.status === 'ready' ? 'connected' : 'disconnected';
+    try {
+        const mongoStatus = mongoose_1.default.connection.readyState === 1 ? 'connected' : 'disconnected';
+        const redisStatus = redis.status === 'ready' ? 'connected' : 'disconnected';
+        const dbHealth = await databaseHealth_service_1.default.checkHealth();
+        const performanceStats = performance_middleware_1.default.getHealthStatus();
+        const overallStatus = mongoStatus === 'connected' &&
+            redisStatus === 'connected' &&
+            dbHealth.status !== 'unhealthy' &&
+            performanceStats.status !== 'unhealthy' ? 'healthy' : 'unhealthy';
+        res.json({
+            status: overallStatus,
+            timestamp: new Date().toISOString(),
+            services: {
+                mongodb: mongoStatus,
+                redis: redisStatus,
+                database: dbHealth.status,
+                performance: performanceStats.status
+            },
+            details: {
+                database: dbHealth,
+                performance: performanceStats
+            }
+        });
+    }
+    catch (error) {
+        logger_1.logger.error('Health check failed', { error });
+        res.status(500).json({
+            status: 'unhealthy',
+            error: 'Health check failed',
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+// Detailed health check for monitoring systems
+app.get('/health/detailed', (0, errorHandler_middleware_1.asyncHandler)(async (req, res) => {
+    const dbHealth = await databaseHealth_service_1.default.checkHealth();
+    const performanceStats = performance_middleware_1.default.getStats();
     res.json({
-        status: 'ok',
         timestamp: new Date().toISOString(),
-        mongodb: mongoStatus,
-        redis: redisStatus
+        database: dbHealth,
+        performance: performanceStats,
+        redis: {
+            status: redis.status,
+            memory: await redis.info('memory'),
+            keyspace: await redis.info('keyspace')
+        }
     });
-});
-// Error handling middleware
-app.use((err, req, res, next) => {
-    logger.error(err.stack);
-    res.status(err.status || 500).json({
-        message: err.message || 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? err : {}
+}));
+// Performance metrics endpoint
+app.get('/metrics', (0, errorHandler_middleware_1.asyncHandler)(async (req, res) => {
+    const stats = performance_middleware_1.default.getStats();
+    res.json(stats);
+}));
+// Security dashboard endpoint
+app.get('/security/dashboard', (0, errorHandler_middleware_1.asyncHandler)(async (req, res) => {
+    const dashboardData = securityAudit_service_1.default.getDashboardData();
+    const breachIndicators = await securityAudit_service_1.default.checkDataBreachIndicators();
+    res.json({
+        timestamp: new Date().toISOString(),
+        security: dashboardData,
+        breachCheck: breachIndicators
     });
-});
+}));
+// Database maintenance endpoint (admin only)
+app.post('/admin/maintenance', (0, errorHandler_middleware_1.asyncHandler)(async (req, res) => {
+    // This should be protected by admin middleware in production
+    const results = await databaseHealth_service_1.default.performMaintenance();
+    res.json({
+        success: true,
+        maintenance: results,
+        timestamp: new Date().toISOString()
+    });
+}));
+// Error handling middleware (must be last)
+app.use(errorHandler_middleware_1.errorHandler);
 // Start server
 app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT}`);
+    logger_1.logger.info(`Server running on port ${PORT}`);
 });
 // Import background jobs
 require("./cron/strategicFlightScanner");
@@ -377,6 +432,29 @@ node_cron_1.default.schedule('0 2 * * 0', async () => {
     }
 });
 console.log('🤖 ML maturity automated evaluation scheduled (weekly on Sundays at 2:00 AM)');
+// Schedule security audit cleanup every day at 4:00 AM
+node_cron_1.default.schedule('0 4 * * *', async () => {
+    try {
+        logger_1.logger.info('🔒 Starting daily security audit cleanup...');
+        securityAudit_service_1.default.cleanup();
+        logger_1.logger.info('✅ Daily security audit cleanup completed');
+    }
+    catch (error) {
+        logger_1.logger.error('❌ Error in daily security audit cleanup:', error);
+    }
+});
+// Schedule database maintenance every Sunday at 3:00 AM
+node_cron_1.default.schedule('0 3 * * 0', async () => {
+    try {
+        logger_1.logger.info('🔧 Starting weekly database maintenance...');
+        await databaseHealth_service_1.default.performMaintenance();
+        logger_1.logger.info('✅ Weekly database maintenance completed');
+    }
+    catch (error) {
+        logger_1.logger.error('❌ Error in weekly database maintenance:', error);
+    }
+});
+logger_1.logger.info('🔒 Security and maintenance schedules initialized');
 // Initialize test data on startup (only in development)
 if (false && process.env.NODE_ENV !== 'production') { // DÉSACTIVÉ pour éviter les fausses données
     setTimeout(async () => {

@@ -1,18 +1,23 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
+import { validate, schemas } from '../middleware/validation.middleware';
+import { asyncHandler } from '../middleware/errorHandler.middleware';
+import { logger, securityLogger } from '../config/logger';
+import requestIp from 'request-ip';
 
 const router = express.Router();
 
 // Newsletter signup (from landing page)
-router.post('/newsletter', async (req, res) => {
-  try {
+router.post('/newsletter', 
+  validate({
+    body: schemas.register.body.fork(['email'], (schema: any) => schema.required())
+      .fork(['password', 'firstName', 'lastName'], (schema: any) => schema.forbidden())
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
     const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
-    }
+    const clientIp = requestIp.getClientIp(req);
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -36,6 +41,8 @@ router.post('/newsletter', async (req, res) => {
 
     await user.save();
 
+    logger.info('Newsletter signup', { email, ip: clientIp });
+
     res.status(201).json({
       message: 'Successfully subscribed! You\'ll start receiving flight deals soon.',
       user: {
@@ -44,15 +51,47 @@ router.post('/newsletter', async (req, res) => {
         subscription_type: user.subscription_type
       }
     });
-  } catch (error) {
-    res.status(500).json({ message: 'Error subscribing to newsletter', error });
-  }
-});
+  })
+);
 
 // Register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, subscription_type = 'free' } = req.body;
+    const { email, password, name, subscription_type = 'free' } = req.body;
+
+    // Validate required fields
+    if (!email || !password || !name) {
+      return res.status(400).json({ 
+        message: 'Email, nom et mot de passe sont requis' 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        message: 'Format d\'email invalide' 
+      });
+    }
+
+    // Validate password strength
+    if (password.length < 8) {
+      return res.status(400).json({ 
+        message: 'Le mot de passe doit contenir au moins 8 caractères' 
+      });
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ 
+        message: 'Le mot de passe doit contenir au moins une majuscule' 
+      });
+    }
+
+    if (!/[0-9]/.test(password)) {
+      return res.status(400).json({ 
+        message: 'Le mot de passe doit contenir au moins un chiffre' 
+      });
+    }
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
@@ -67,6 +106,7 @@ router.post('/register', async (req, res) => {
     // Create user
     const user = new User({
       email,
+      name,
       password: hashedPassword,
       subscription_type
     });
@@ -97,6 +137,21 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ 
+        message: 'Email et mot de passe sont requis' 
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        message: 'Format d\'email invalide' 
+      });
+    }
     
     // 🔍 DEBUG: Log incoming request
     console.log('🔍 LOGIN REQUEST DEBUG:');

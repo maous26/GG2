@@ -1,9 +1,15 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import User from '../models/User';
 import { Alert } from '../models/Alert';
 import { Route } from '../models/Route';
 import { ApiCall } from '../models/ApiCall';
 import { MLMaturityService } from '../services/mlMaturityService';
+import { validate, schemas } from '../middleware/validation.middleware';
+import { asyncHandler } from '../middleware/errorHandler.middleware';
+import { logger } from '../config/logger';
+import securityAudit from '../services/securityAudit.service';
+import { KPIService } from '../services/kpi.service';
+import Joi from 'joi';
 
 const router = express.Router();
 const mlMaturityService = new MLMaturityService();
@@ -414,7 +420,7 @@ router.post('/force-scan', async (req, res) => {
     const { getStrategicScanner } = await import('../cron/strategicFlightScanner');
     const scanner = getStrategicScanner();
     
-    if (!scanner) {
+        if (!scanner) {
       return res.status(500).json({ message: 'Scanner not initialized' });
     }
     
@@ -432,5 +438,363 @@ router.post('/force-scan', async (req, res) => {
     res.status(500).json({ message: 'Error during force scan', error: String(error) });
   }
 });
+
+// Security audit endpoints
+router.get('/security/report', asyncHandler(async (req: Request, res: Response) => {
+  const { days = 7 } = req.query;
+  const endDate = new Date();
+  const startDate = new Date(endDate.getTime() - Number(days) * 24 * 60 * 60 * 1000);
+  
+  const report = await securityAudit.generateReport(startDate, endDate);
+  res.json(report);
+}));
+
+router.get('/security/dashboard', asyncHandler(async (req: Request, res: Response) => {
+  const dashboardData = securityAudit.getDashboardData();
+  const breachCheck = await securityAudit.checkDataBreachIndicators();
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    security: dashboardData,
+    breachIndicators: breachCheck
+  });
+}));
+
+router.post('/security/block-ip', 
+  validate({
+    body: Joi.object({
+      ip: Joi.string().ip().required(),
+      reason: Joi.string().optional()
+    }).unknown(false)
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { ip, reason } = req.body;
+    
+    securityAudit.logEvent({
+      type: 'admin_access',
+      severity: 'high',
+      ip,
+      details: { action: 'manual_ip_block', reason },
+      userAgent: req.get('User-Agent') || ''
+    });
+    
+    logger.warn('IP manually blocked by admin', { ip, reason });
+    
+    res.json({ 
+      success: true, 
+      message: `IP ${ip} has been flagged for monitoring`,
+      timestamp: new Date().toISOString()
+    });
+  })
+);
+
+// Enhanced KPI Endpoints for Admin Console
+
+// Get comprehensive KPI dashboard data
+router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) => {
+  const timeRange = req.query.range || '7d'; // 24h, 7d, 30d, 90d
+  const now = new Date();
+  const startDate = KPIService.getStartDate(timeRange as string);
+
+  const [
+    // User Metrics
+    totalUsers,
+    activeUsers,
+    newUsers,
+    premiumUsers,
+    enterpriseUsers,
+    userRetentionRate,
+    
+    // Flight & Route Metrics
+    totalRoutes,
+    activeRoutes,
+    totalScans,
+    successfulScans,
+    totalAlerts,
+    alertsConversionRate,
+    
+    // Financial Metrics
+    totalSavings,
+    avgSavingsPerAlert,
+    premiumRevenue,
+    
+    // System Performance
+    avgResponseTime,
+    systemUptime,
+    apiCallsSuccess,
+    errorRate,
+    
+    // ML & AI Metrics
+    mlMaturity,
+    predictionAccuracy,
+    
+    // Daily trends
+    dailyMetrics
+  ] = await Promise.all([
+    // User Metrics
+    User.countDocuments(),
+    User.countDocuments({ lastLogin: { $gte: startDate } }),
+    User.countDocuments({ createdAt: { $gte: startDate } }),
+    User.countDocuments({ subscription_type: 'premium' }),
+    User.countDocuments({ subscription_type: 'enterprise' }),
+    KPIService.calculateUserRetention(startDate),
+    
+    // Flight & Route Metrics
+    Route.countDocuments(),
+    Route.countDocuments({ isActive: true }),
+    ApiCall.countDocuments({ 
+      createdAt: { $gte: startDate },
+      endpoint: { $regex: /scan|flight/ }
+    }),
+    ApiCall.countDocuments({ 
+      createdAt: { $gte: startDate },
+      endpoint: { $regex: /scan|flight/ },
+      status: { $lt: 400 }
+    }),
+    Alert.countDocuments({ detectedAt: { $gte: startDate } }),
+    KPIService.calculateAlertConversionRate(startDate),
+    
+    // Financial Metrics
+    KPIService.calculateTotalSavings(startDate),
+    KPIService.calculateAvgSavingsPerAlert(startDate),
+    KPIService.calculatePremiumRevenue(startDate),
+    
+    // System Performance
+    KPIService.calculateAvgResponseTime(startDate),
+    KPIService.calculateSystemUptime(startDate),
+    ApiCall.countDocuments({ 
+      createdAt: { $gte: startDate },
+      status: { $lt: 400 }
+    }),
+    KPIService.calculateErrorRate(startDate),
+    
+    // ML Metrics
+    KPIService.getLatestMLMaturity(),
+    KPIService.calculatePredictionAccuracy(startDate),
+    
+    // Daily trends
+    KPIService.getDailyMetricsTrends(startDate)
+  ]);
+
+  const scanSuccessRate = totalScans > 0 ? (successfulScans / totalScans) * 100 : 0;
+  const userGrowthRate = await KPIService.calculateGrowthRate(newUsers, timeRange as string);
+
+  res.json({
+    period: {
+      range: timeRange,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString()
+    },
+    users: {
+      total: totalUsers,
+      active: activeUsers,
+      new: newUsers,
+      premium: premiumUsers,
+      enterprise: enterpriseUsers,
+      retention: userRetentionRate,
+      growth: userGrowthRate,
+      conversionRate: premiumUsers > 0 ? (premiumUsers / totalUsers) * 100 : 0
+    },
+    flights: {
+      totalRoutes,
+      activeRoutes,
+      totalScans,
+      successfulScans,
+      scanSuccessRate,
+      totalAlerts,
+      alertsConversionRate,
+      avgAlertsPerRoute: activeRoutes > 0 ? totalAlerts / activeRoutes : 0
+    },
+    financial: {
+      totalSavings,
+      avgSavingsPerAlert,
+      premiumRevenue,
+      revenuePerUser: totalUsers > 0 ? premiumRevenue / totalUsers : 0,
+      savingsToRevenueRatio: premiumRevenue > 0 ? totalSavings / premiumRevenue : 0
+    },
+    performance: {
+      avgResponseTime,
+      systemUptime,
+      apiCallsSuccess,
+      errorRate,
+      availability: systemUptime > 99 ? 'excellent' : systemUptime > 95 ? 'good' : 'needs-attention'
+    },
+    ai: {
+      maturityScore: mlMaturity?.maturityScore || 0,
+      predictionAccuracy,
+      readyForAutonomy: mlMaturity?.recommendations?.readyForAutonomy || false,
+      riskLevel: mlMaturity?.recommendations?.riskLevel || 'unknown'
+    },
+    trends: dailyMetrics
+  });
+}));
+
+// Get detailed user analytics
+router.get('/kpis/users', asyncHandler(async (req: Request, res: Response) => {
+  const timeRange = req.query.range || '30d';
+  const startDate = KPIService.getStartDate(timeRange as string);
+
+  const [
+    usersBySubscription,
+    usersByCountry,
+    userEngagement,
+    userChurn,
+    onboardingCompletion,
+    userLifetimeValue
+  ] = await Promise.all([
+    KPIService.getUsersBySubscription(),
+    KPIService.getUsersByCountry(),
+    KPIService.getUserEngagementMetrics(startDate),
+    KPIService.calculateUserChurn(startDate),
+    KPIService.getOnboardingCompletionRate(),
+    KPIService.calculateUserLifetimeValue()
+  ]);
+
+  res.json({
+    period: { range: timeRange, startDate: startDate.toISOString() },
+    subscription: usersBySubscription,
+    geographic: usersByCountry,
+    engagement: userEngagement,
+    churn: userChurn,
+    onboarding: onboardingCompletion,
+    lifetimeValue: userLifetimeValue
+  });
+}));
+
+// Get flight performance analytics
+router.get('/kpis/flights', asyncHandler(async (req: Request, res: Response) => {
+  const timeRange = req.query.range || '30d';
+  const startDate = KPIService.getStartDate(timeRange as string);
+
+  const [
+    routePerformance,
+    airlineAnalysis,
+    priceAnalysis,
+    scanEfficiency,
+    alertQuality
+  ] = await Promise.all([
+    KPIService.getRoutePerformanceMetrics(startDate),
+    KPIService.getAirlineAnalysis(startDate),
+    KPIService.getPriceAnalysis(startDate),
+    KPIService.getScanEfficiencyMetrics(startDate),
+    KPIService.getAlertQualityMetrics(startDate)
+  ]);
+
+  res.json({
+    period: { range: timeRange, startDate: startDate.toISOString() },
+    routes: routePerformance,
+    airlines: airlineAnalysis,
+    pricing: priceAnalysis,
+    scanning: scanEfficiency,
+    alerts: alertQuality
+  });
+}));
+
+// Get system performance metrics
+router.get('/kpis/system', asyncHandler(async (req: Request, res: Response) => {
+  const timeRange = req.query.range || '24h';
+  const startDate = KPIService.getStartDate(timeRange as string);
+
+  const [
+    responseTimeMetrics,
+    throughputMetrics,
+    errorAnalysis,
+    resourceUsage,
+    databaseMetrics,
+    securityMetrics
+  ] = await Promise.all([
+    KPIService.getResponseTimeMetrics(startDate),
+    KPIService.getThroughputMetrics(startDate),
+    KPIService.getErrorAnalysis(startDate),
+    KPIService.getResourceUsageMetrics(),
+    KPIService.getDatabaseMetrics(),
+    KPIService.getSecurityMetrics(startDate)
+  ]);
+
+  res.json({
+    period: { range: timeRange, startDate: startDate.toISOString() },
+    performance: {
+      responseTime: responseTimeMetrics,
+      throughput: throughputMetrics,
+      errors: errorAnalysis
+    },
+    resources: resourceUsage,
+    database: databaseMetrics,
+    security: securityMetrics
+  });
+}));
+
+// Get financial analytics
+router.get('/kpis/financial', asyncHandler(async (req: Request, res: Response) => {
+  const timeRange = req.query.range || '30d';
+  const startDate = KPIService.getStartDate(timeRange as string);
+
+  const [
+    revenueMetrics,
+    savingsMetrics,
+    subscriptionMetrics,
+    costAnalysis,
+    roi
+  ] = await Promise.all([
+    KPIService.getRevenueMetrics(startDate),
+    KPIService.getSavingsMetrics(startDate),
+    KPIService.getSubscriptionMetrics(startDate),
+    KPIService.getCostAnalysis(startDate),
+    KPIService.calculateROI(startDate)
+  ]);
+
+  res.json({
+    period: { range: timeRange, startDate: startDate.toISOString() },
+    revenue: revenueMetrics,
+    savings: savingsMetrics,
+    subscriptions: subscriptionMetrics,
+    costs: costAnalysis,
+    roi: roi
+  });
+}));
+
+// Get real-time KPI updates
+router.get('/kpis/realtime', asyncHandler(async (req: Request, res: Response) => {
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  const [
+    currentActiveUsers,
+    currentApiCalls,
+    currentAlerts,
+    currentErrors,
+    systemHealth,
+    queueStatus
+  ] = await Promise.all([
+    User.countDocuments({ lastLogin: { $gte: oneHourAgo } }),
+    ApiCall.countDocuments({ createdAt: { $gte: oneHourAgo } }),
+    Alert.countDocuments({ detectedAt: { $gte: oneHourAgo } }),
+    ApiCall.countDocuments({ 
+      createdAt: { $gte: oneHourAgo },
+      status: { $gte: 400 }
+    }),
+    KPIService.getSystemHealthStatus(),
+    KPIService.getQueueStatus()
+  ]);
+
+  res.json({
+    timestamp: now.toISOString(),
+    realtime: {
+      activeUsers: currentActiveUsers,
+      apiCallsPerHour: currentApiCalls,
+      alertsPerHour: currentAlerts,
+      errorsPerHour: currentErrors,
+      healthScore: systemHealth.score,
+      status: systemHealth.status
+    },
+    system: {
+      health: systemHealth,
+      queues: queueStatus,
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpu: process.cpuUsage()
+    }
+  });
+}));
 
 export default router;

@@ -1,14 +1,30 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import Redis from 'ioredis';
 import cron from 'node-cron';
-import winston from 'winston';
 import mongoose from 'mongoose';
 import { connectDB } from './config/database';
+
+// Enhanced middleware imports
+import { logger } from './config/logger';
+import { errorHandler, asyncHandler } from './middleware/errorHandler.middleware';
+import { 
+  apiRateLimit, 
+  authRateLimit, 
+  adminRateLimit,
+  adminDashboardRateLimit,
+  securityHeaders,
+  requestLogger,
+  suspiciousActivityDetector,
+  speedLimiter
+} from './middleware/security.middleware';
+import performanceMonitor from './middleware/performance.middleware';
+import { sanitize } from './middleware/validation.middleware';
+import databaseHealthMonitor from './services/databaseHealth.service';
+import securityAudit from './services/securityAudit.service';
 
 // Import routes
 import authRoutes from './routes/auth.routes';
@@ -18,8 +34,6 @@ import subscriptionRoutes from './routes/ubscription.routes';
 import scanningRoutes from './routes/scanning.routes';
 import userRoutes from './routes/user.routes';
 import statsRoutes from './routes/stats.routes';
-// import { AIAgent } from './services/aiAgentService'; // Disabled - not available
-// import logger from 'winston'; // Using console instead to avoid conflict
 import { createTestAlerts, cleanupOldAlerts } from './utils/createTestAlerts';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -32,24 +46,21 @@ const app = express();
 app.set('trust proxy', true); // Enable trust proxy for all proxies
 const PORT = process.env.PORT || 3001;
 
-// Logger configuration
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.json(),
-  transports: [
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-    new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
-});
-
 // Connect to MongoDB
 connectDB();
 
+// Setup database monitoring
+databaseHealthMonitor.setupMonitoring();
+
 // Redis connection (still using Redis for caching)
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+
+// Enhanced security and performance middleware
+app.use(securityHeaders);
+app.use(requestLogger);
+app.use(suspiciousActivityDetector);
+app.use(performanceMonitor.middleware());
+app.use(speedLimiter);
 
 // CORS Configuration - MUST be first
 app.use(cors({
@@ -62,22 +73,18 @@ app.use(cors({
 // Middleware
 app.use(helmet());
 app.use(compression());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(sanitize);
 
-// Rate limiting (after CORS) - TEMPORARILY DISABLED FOR DEBUG
-/*
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  skip: (req) => {
-    // Skip rate limiting for OPTIONS requests (CORS preflight)
-    return req.method === 'OPTIONS';
-  }
-});
-app.use('/api/', limiter);
-*/
-console.log('🚨 Rate limiter DISABLED for debugging CORS issues');
+// Enhanced rate limiting with granular controls
+app.use('/api/auth', authRateLimit);
+app.use('/api/admin/kpis', adminDashboardRateLimit); // More generous for dashboard
+app.use('/api/admin/stats', adminDashboardRateLimit); // More generous for stats
+app.use('/api/admin/metrics', adminDashboardRateLimit); // More generous for metrics
+app.use('/api/admin/security', adminDashboardRateLimit); // More generous for security dashboard
+app.use('/api/admin', adminRateLimit); // Standard admin rate limit for other operations
+app.use('/api/', apiRateLimit);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -344,27 +351,92 @@ app.get('/admin-access', (req, res) => {
 
 // Stats endpoint
 
-// Health check
-app.get('/health', async (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  const redisStatus = redis.status === 'ready' ? 'connected' : 'disconnected';
+// Enhanced health check endpoints
+app.get('/health', async (req: Request, res: Response) => {
+  try {
+    const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    const redisStatus = redis.status === 'ready' ? 'connected' : 'disconnected';
+    const dbHealth = await databaseHealthMonitor.checkHealth();
+    const performanceStats = performanceMonitor.getHealthStatus();
 
-  res.json({ 
-    status: 'ok', 
+    const overallStatus = 
+      mongoStatus === 'connected' && 
+      redisStatus === 'connected' && 
+      dbHealth.status !== 'unhealthy' &&
+      performanceStats.status !== 'unhealthy' ? 'healthy' : 'unhealthy';
+
+    res.json({ 
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      services: {
+        mongodb: mongoStatus,
+        redis: redisStatus,
+        database: dbHealth.status,
+        performance: performanceStats.status
+      },
+      details: {
+        database: dbHealth,
+        performance: performanceStats
+      }
+    });
+  } catch (error) {
+    logger.error('Health check failed', { error });
+    res.status(500).json({
+      status: 'unhealthy',
+      error: 'Health check failed',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Detailed health check for monitoring systems
+app.get('/health/detailed', asyncHandler(async (req: Request, res: Response) => {
+  const dbHealth = await databaseHealthMonitor.checkHealth();
+  const performanceStats = performanceMonitor.getStats();
+  
+  res.json({
     timestamp: new Date().toISOString(),
-    mongodb: mongoStatus,
-    redis: redisStatus
+    database: dbHealth,
+    performance: performanceStats,
+    redis: {
+      status: redis.status,
+      memory: await redis.info('memory'),
+      keyspace: await redis.info('keyspace')
+    }
   });
-});
+}));
 
-// Error handling middleware
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  logger.error(err.stack);
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err : {}
+// Performance metrics endpoint
+app.get('/metrics', asyncHandler(async (req: Request, res: Response) => {
+  const stats = performanceMonitor.getStats();
+  res.json(stats);
+}));
+
+// Security dashboard endpoint
+app.get('/security/dashboard', asyncHandler(async (req: Request, res: Response) => {
+  const dashboardData = securityAudit.getDashboardData();
+  const breachIndicators = await securityAudit.checkDataBreachIndicators();
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    security: dashboardData,
+    breachCheck: breachIndicators
   });
-});
+}));
+
+// Database maintenance endpoint (admin only)
+app.post('/admin/maintenance', asyncHandler(async (req: Request, res: Response) => {
+  // This should be protected by admin middleware in production
+  const results = await databaseHealthMonitor.performMaintenance();
+  res.json({
+    success: true,
+    maintenance: results,
+    timestamp: new Date().toISOString()
+  });
+}));
+
+// Error handling middleware (must be last)
+app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {
@@ -396,6 +468,30 @@ cron.schedule('0 2 * * 0', async () => {
 });
 
 console.log('🤖 ML maturity automated evaluation scheduled (weekly on Sundays at 2:00 AM)');
+
+// Schedule security audit cleanup every day at 4:00 AM
+cron.schedule('0 4 * * *', async () => {
+  try {
+    logger.info('🔒 Starting daily security audit cleanup...');
+    securityAudit.cleanup();
+    logger.info('✅ Daily security audit cleanup completed');
+  } catch (error) {
+    logger.error('❌ Error in daily security audit cleanup:', error);
+  }
+});
+
+// Schedule database maintenance every Sunday at 3:00 AM
+cron.schedule('0 3 * * 0', async () => {
+  try {
+    logger.info('🔧 Starting weekly database maintenance...');
+    await databaseHealthMonitor.performMaintenance();
+    logger.info('✅ Weekly database maintenance completed');
+  } catch (error) {
+    logger.error('❌ Error in weekly database maintenance:', error);
+  }
+});
+
+logger.info('🔒 Security and maintenance schedules initialized');
 
 // Initialize test data on startup (only in development)
 if (false && process.env.NODE_ENV !== 'production') { // DÉSACTIVÉ pour éviter les fausses données

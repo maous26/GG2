@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import EnhancedAdminDashboard from './pages/EnhancedAdminDashboard';
+
+// AdminDashboard wrapper component
+const AdminDashboard: React.FC = () => {
+  return <EnhancedAdminDashboard />;
+};
 
 // Types for user authentication (only for admin)
 type UserType = 'admin' | 'user' | null;
@@ -194,6 +200,22 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
   };
 
   const handleFinalSubmit = async () => {
+    // Final validation check before submission
+    if (!userData.email || !userData.name || !isValidEmail(userData.email)) {
+      alert('❌ Erreur de validation: Email invalide ou nom manquant.\n\nVeuillez retourner à l\'étape 1 pour corriger ces informations.');
+      return;
+    }
+
+    if (!userData.password || !isValidPassword(userData.password)) {
+      alert('❌ Erreur de validation: Mot de passe invalide.\n\nLe mot de passe doit contenir:\n• Au moins 8 caractères\n• Une majuscule\n• Un chiffre');
+      return;
+    }
+
+    if (userData.password !== userData.confirmPassword) {
+      alert('❌ Erreur de validation: Les mots de passe ne correspondent pas.');
+      return;
+    }
+
     setIsProcessing(true);
     
     try {
@@ -203,16 +225,69 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email: userData.email, 
+          name: userData.name, // Ajout du nom
           password: userData.password,
           subscription_type: 'premium'
         }),
       });
 
       if (!registerResponse.ok) {
-        throw new Error('Erreur lors de la création du compte');
+        const errorData = await registerResponse.json();
+        if (registerResponse.status === 400 && errorData.message === 'User already exists') {
+          // Try to login with the existing user and upgrade to premium
+          setMessage(`Un compte existe déjà avec l'email ${userData.email}. Tentative de mise à niveau vers Premium...`);
+          
+          const loginResponse = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: userData.email,
+              password: userData.password
+            }),
+          });
+          
+          if (loginResponse.ok) {
+            const loginData = await loginResponse.json();
+            // User exists and password is correct, continue with preferences update
+            const user = loginData.user;
+            setMessage('Connexion réussie! Mise à jour de vos préférences...');
+            
+            // Continue with the preferences update flow...
+            const preferencesResponse = await fetch('/api/auth/users/preferences', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: user.id,
+                preferences: {
+                  additionalAirports: userData.additionalAirports,
+                  dreamDestinations: userData.dreamDestinations,
+                  travelerType: userData.travelerType,
+                  travelPeriod: userData.travelPeriod,
+                  notificationStyle: userData.notificationStyle || 'friendly',
+                  budgetRange: userData.budgetRange
+                },
+                onboardingCompleted: true
+              }),
+            });
+            
+            if (preferencesResponse.ok) {
+              setMessage('✅ Compte Premium activé avec succès! Redirection vers votre dashboard...');
+              setTimeout(() => {
+                window.location.href = '/dashboard';
+              }, 2000);
+            } else {
+              throw new Error('Erreur lors de la mise à jour des préférences');
+            }
+            return; // Exit early since we handled the existing user case
+          } else {
+            throw new Error(`Un compte existe déjà avec l'email ${userData.email}. Le mot de passe fourni ne correspond pas. Veuillez utiliser le bon mot de passe ou une autre adresse email.`);
+          }
+        }
+        throw new Error(`Erreur lors de la création du compte: ${errorData.message || 'Erreur inconnue'}`);
       }
 
-      const { user } = await registerResponse.json();
+      const registerData = await registerResponse.json();
+      const { user, token } = registerData;
 
       // 2. Mettre à jour les préférences
       const preferencesResponse = await fetch('/api/auth/users/preferences', {
@@ -234,7 +309,6 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
 
       if (preferencesResponse.ok) {
         // Stocker les informations de connexion
-        const { token } = await registerResponse.json();
         const updatedUser = await preferencesResponse.json();
         
         localStorage.setItem('token', token);
@@ -299,6 +373,12 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
     );
   }
 
+  // Helper function to validate email
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   // Étape 1: Informations de base
   if (currentStep === 'basic') {
     return (
@@ -320,16 +400,47 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
           />
           <input 
             type="email" 
-            placeholder="Votre email" 
-            style={styles.input}
+            placeholder="Votre email (ex: nom@exemple.com)" 
+            style={{
+              ...styles.input,
+              borderColor: userData.email && !isValidEmail(userData.email) ? '#ef4444' : undefined
+            }}
             value={userData.email}
             onChange={(e) => setUserData({...userData, email: e.target.value})}
           />
           
+          {/* Email validation error */}
+          {userData.email && !isValidEmail(userData.email) && (
+            <div style={{
+              backgroundColor: '#fee2e2',
+              color: '#dc2626',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              marginBottom: '1rem',
+              fontSize: '0.9rem'
+            }}>
+              ⚠️ Veuillez saisir une adresse email valide
+            </div>
+          )}
+          
           <button 
-            style={styles.button}
-            onClick={() => setCurrentStep('password')}
-            disabled={!userData.email || !userData.name}
+            style={{
+              ...styles.button,
+              backgroundColor: (!userData.email || !userData.name || !isValidEmail(userData.email)) ? '#9ca3af' : styles.button.backgroundColor,
+              cursor: (!userData.email || !userData.name || !isValidEmail(userData.email)) ? 'not-allowed' : 'pointer',
+              opacity: (!userData.email || !userData.name || !isValidEmail(userData.email)) ? 0.6 : 1
+            }}
+            onClick={(e) => {
+              if (!userData.email || !userData.name || !isValidEmail(userData.email)) {
+                e.preventDefault();
+                alert('⚠️ Veuillez remplir tous les champs correctement avant de continuer.\n\n' +
+                      '✓ Nom complet requis\n' +
+                      '✓ Email valide requis (ex: nom@exemple.com)');
+                return;
+              }
+              setCurrentStep('password');
+            }}
+            disabled={!userData.email || !userData.name || !isValidEmail(userData.email)}
           >
             Continuer → Mot de passe
           </button>
@@ -337,6 +448,14 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
       </div>
     );
   }
+
+  // Helper function to validate password
+  const isValidPassword = (password: string) => {
+    const hasMinLength = password.length >= 8;
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    return hasMinLength && hasUppercase && hasNumber;
+  };
 
   // Étape 2: Création mot de passe
   if (currentStep === 'password') {
@@ -353,7 +472,10 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
           <input 
             type="password" 
             placeholder="Votre mot de passe" 
-            style={styles.input}
+            style={{
+              ...styles.input,
+              borderColor: userData.password && !isValidPassword(userData.password) ? '#ef4444' : undefined
+            }}
             value={userData.password}
             onChange={(e) => setUserData({...userData, password: e.target.value})}
           />
@@ -361,7 +483,10 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
           <input 
             type="password" 
             placeholder="Confirmez votre mot de passe" 
-            style={styles.input}
+            style={{
+              ...styles.input,
+              borderColor: userData.confirmPassword && userData.password !== userData.confirmPassword ? '#ef4444' : undefined
+            }}
             value={userData.confirmPassword}
             onChange={(e) => setUserData({...userData, confirmPassword: e.target.value})}
           />
@@ -379,14 +504,14 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
               overflow: 'hidden'
             }}>
               <div style={{
-                width: `${Math.min(100, (userData.password.length / 8) * 100)}%`,
+                width: `${userData.password ? (isValidPassword(userData.password) ? 100 : 50) : 0}%`,
                 height: '100%',
-                backgroundColor: userData.password.length < 6 ? '#ef4444' : userData.password.length < 8 ? '#f59e0b' : '#10b981',
+                backgroundColor: isValidPassword(userData.password) ? '#10b981' : userData.password.length > 0 ? '#f59e0b' : '#ef4444',
                 transition: 'all 0.3s'
               }}></div>
             </div>
             <div style={{fontSize: '0.8rem', color: '#6b7280', marginTop: '0.3rem'}}>
-              {userData.password.length < 6 ? 'Trop court' : userData.password.length < 8 ? 'Moyen' : 'Fort'}
+              {isValidPassword(userData.password) ? 'Fort ✓' : userData.password.length > 0 ? 'Faible - critères manquants' : 'Aucun mot de passe'}
             </div>
           </div>
 
@@ -428,9 +553,30 @@ const PremiumOnboarding: React.FC<{ onBack: () => void; onSuccess: () => void }>
           </div>
           
           <button 
-            style={styles.button}
-            onClick={() => setCurrentStep('airports')}
-            disabled={!userData.password || !userData.confirmPassword || userData.password !== userData.confirmPassword || userData.password.length < 8}
+            style={{
+              ...styles.button,
+              backgroundColor: (!isValidPassword(userData.password) || userData.password !== userData.confirmPassword) ? '#9ca3af' : styles.button.backgroundColor,
+              cursor: (!isValidPassword(userData.password) || userData.password !== userData.confirmPassword) ? 'not-allowed' : 'pointer',
+              opacity: (!isValidPassword(userData.password) || userData.password !== userData.confirmPassword) ? 0.6 : 1
+            }}
+            onClick={(e) => {
+              if (!isValidPassword(userData.password)) {
+                e.preventDefault();
+                alert('⚠️ Votre mot de passe ne respecte pas les exigences de sécurité.\n\n' +
+                      'Exigences :\n' +
+                      '✓ Au moins 8 caractères\n' +
+                      '✓ Une majuscule (A-Z)\n' +
+                      '✓ Un chiffre (0-9)');
+                return;
+              }
+              if (userData.password !== userData.confirmPassword) {
+                e.preventDefault();
+                alert('⚠️ Les mots de passe ne correspondent pas.\n\nVeuillez saisir le même mot de passe dans les deux champs.');
+                return;
+              }
+              setCurrentStep('airports');
+            }}
+            disabled={!isValidPassword(userData.password) || userData.password !== userData.confirmPassword}
           >
             Continuer → Aéroports
           </button>
@@ -1039,625 +1185,6 @@ const AdminLogin: React.FC<{ onLogin: (user: User) => void; onBack: () => void }
 
 // Note: AdminDashboard is now imported from ./pages/AdminDashboard
 
-// AdminDashboard avec Jauge ML intégrée
-const AdminDashboard: React.FC = () => {
-  const [stats, setStats] = useState<any>(null);
-  const [routes, setRoutes] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [mlMaturity, setMlMaturity] = useState<any>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [filterTier, setFilterTier] = useState<number>(0);
-
-  const fetchData = async () => {
-    try {
-      const [statsRes, routesRes, usersRes, mlRes] = await Promise.all([
-        fetch('/api/admin/stats'),
-        fetch('/api/admin/routes'),
-        fetch('/api/admin/users'),
-        fetch('/api/admin/ml-maturity')
-      ]);
-
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (routesRes.ok) setRoutes(await routesRes.json());
-      if (usersRes.ok) setUsers(await usersRes.json());
-      if (mlRes.ok) setMlMaturity(await mlRes.json());
-
-      setLastUpdate(new Date());
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching admin data:', error);
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // Check auth first
-    const token = localStorage.getItem('token');
-    if (!token) {
-      window.location.href = '/';
-      return;
-    }
-
-    // Appel réel des endpoints admin, log des données réelles
-    fetchData();
-    
-    // Log des données réelles à chaque rafraîchissement
-    const interval = setInterval(() => {
-      fetchData();
-      setTimeout(() => {
-        console.log('Admin stats:', stats);
-        console.log('Admin routes:', routes);
-        console.log('Admin users:', users);
-        console.log('ML Maturity:', mlMaturity);
-      }, 1000);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    // Log initial après premier fetch
-    if (!loading) {
-      console.log('Admin stats:', stats);
-      console.log('Admin routes:', routes);
-      console.log('Admin users:', users);
-      console.log('ML Maturity:', mlMaturity);
-    }
-  }, [loading, stats, routes, users, mlMaturity]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = '/';
-  };
-
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        backgroundColor: '#f1f5f9',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '1.5rem',
-        color: '#64748b'
-      }}>
-        🔄 Chargement des données admin...
-      </div>
-    );
-  }
-
-  return (
-    <div style={{
-      minHeight: '100vh',
-      backgroundColor: '#f1f5f9',
-      padding: '2rem'
-    }}>
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '2rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          marginBottom: '2rem'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-            <div>
-              <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>🎛️ Console d'Administration</h1>
-              <p style={{ color: '#64748b', margin: '0.5rem 0 0 0' }}>
-                GlobeGenius Admin • Dernière MAJ: {lastUpdate.toLocaleTimeString()}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button
-                onClick={fetchData}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
-              >
-                🔄 Actualiser
-              </button>
-              <button
-                onClick={handleLogout}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor: '#dc2626',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: '500'
-                }}
-              >
-                Déconnexion
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ML Maturity Gauge - Section proéminente */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '2rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          marginBottom: '2rem',
-          border: '3px solid #f59e0b'
-        }}>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#d97706', marginBottom: '1.5rem', textAlign: 'center' }}>
-            🧠 Machine Learning Maturity Gauge
-          </h2>
-          
-          {mlMaturity ? (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'auto 1fr auto',
-              gap: '2rem',
-              alignItems: 'center'
-            }}>
-              {/* Gauge circulaire */}
-              <div style={{ 
-                position: 'relative',
-                width: '150px',
-                height: '150px'
-              }}>
-                <svg width="150" height="150" style={{ transform: 'rotate(-90deg)' }}>
-                  <circle
-                    cx="75"
-                    cy="75"
-                    r="60"
-                    stroke="#e5e7eb"
-                    strokeWidth="12"
-                    fill="none"
-                  />
-                  <circle
-                    cx="75"
-                    cy="75"
-                    r="60"
-                    stroke={mlMaturity.maturityScore > 70 ? '#10b981' : mlMaturity.maturityScore > 40 ? '#f59e0b' : '#dc2626'}
-                    strokeWidth="12"
-                    fill="none"
-                    strokeDasharray={`${2 * Math.PI * 60}`}
-                    strokeDashoffset={`${2 * Math.PI * 60 * (1 - mlMaturity.maturityScore / 100)}`}
-                    strokeLinecap="round"
-                    style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
-                  />
-                </svg>
-                <div style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  textAlign: 'center'
-                }}>
-                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#1e293b' }}>
-                    {Math.round(mlMaturity.maturityScore)}%
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Maturité</div>
-                </div>
-              </div>
-
-              {/* Détails des métriques */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div style={{ backgroundColor: '#f0f9ff', padding: '1rem', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#0369a1' }}>🎯 Précision Prédiction</h4>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    {Math.round((mlMaturity.predictionAccuracy.dealDetection + mlMaturity.predictionAccuracy.priceForecasting) / 2)}%
-                  </div>
-                </div>
-                <div style={{ backgroundColor: '#f0fdf4', padding: '1rem', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#16a34a' }}>📊 Volume de Données</h4>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    {mlMaturity.dataVolume.totalDealsAnalyzed.toLocaleString()}
-                  </div>
-                </div>
-                <div style={{ backgroundColor: '#fefce8', padding: '1rem', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#ca8a04' }}>🔧 Stabilité</h4>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    {Math.round(mlMaturity.stability.consistencyScore)}%
-                  </div>
-                </div>
-                <div style={{ backgroundColor: '#fdf2f8', padding: '1rem', borderRadius: '8px' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#be185d' }}>🤖 Autonomie</h4>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                    {Math.round(mlMaturity.autonomy.confidenceLevel)}%
-                  </div>
-                </div>
-              </div>
-
-              {/* Recommandations */}
-              <div style={{ 
-                backgroundColor: mlMaturity.recommendations.readyForAutonomy ? '#dcfce7' : '#fef3c7',
-                padding: '1.5rem',
-                borderRadius: '8px',
-                minWidth: '250px'
-              }}>
-                <h4 style={{ 
-                  margin: '0 0 1rem 0', 
-                  color: mlMaturity.recommendations.readyForAutonomy ? '#16a34a' : '#d97706' 
-                }}>
-                  {mlMaturity.recommendations.readyForAutonomy ? '✅ Prêt pour Autonomie' : '⚠️ Amélioration Requise'}
-                </h4>
-                <div style={{ fontSize: '0.9rem', lineHeight: '1.4' }}>
-                  {mlMaturity.recommendations.suggestedActions.slice(0, 3).map((action: string, i: number) => (
-                    <div key={i} style={{ marginBottom: '0.3rem' }}>• {action}</div>
-                  ))}
-                </div>
-                <div style={{ 
-                  marginTop: '1rem', 
-                  fontSize: '0.8rem', 
-                  color: '#6b7280' 
-                }}>
-                  Risque: {mlMaturity.recommendations.riskLevel}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-              🔄 Calcul de la maturité ML en cours...
-            </div>
-          )}
-        </div>
-        
-        {/* Stats Overview */}
-        {stats && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1.5rem',
-            marginBottom: '2rem'
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '12px',
-              textAlign: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-            }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1e40af', marginBottom: '1rem' }}>
-                👥 Utilisateurs
-              </h3>
-              <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#1e40af', margin: '0.5rem 0' }}>
-                {stats.overview?.totalUsers?.toLocaleString() || '0'}
-              </p>
-              <p style={{ color: '#64748b', margin: 0 }}>
-                {stats.overview?.premiumUsers || 0} Premium • {stats.overview?.freeUsers || 0} Gratuit
-              </p>
-            </div>
-            
-            <div style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '12px',
-              textAlign: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-            }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#16a34a', marginBottom: '1rem' }}>
-                🚀 Alertes envoyées
-              </h3>
-              <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#16a34a', margin: '0.5rem 0' }}>
-                {stats.overview?.totalAlerts?.toLocaleString() || '0'}
-              </p>
-              <p style={{ color: '#64748b', margin: 0 }}>
-                {stats.overview?.todayAlerts || 0} aujourd'hui
-              </p>
-            </div>
-            
-            <div style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '12px',
-              textAlign: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-            }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#d97706', marginBottom: '1rem' }}>
-                💰 Économies générées
-              </h3>
-              <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#d97706', margin: '0.5rem 0' }}>
-                €{Math.round(stats.overview?.totalSavings || 0).toLocaleString()}
-              </p>
-              <p style={{ color: '#64748b', margin: 0 }}>Total utilisateurs</p>
-            </div>
-            
-            <div style={{
-              backgroundColor: 'white',
-              padding: '2rem',
-              borderRadius: '12px',
-              textAlign: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-            }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#be185d', marginBottom: '1rem' }}>
-                🔄 API Calls
-              </h3>
-              <p style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#be185d', margin: '0.5rem 0' }}>
-                {stats.overview?.todayApiCalls?.toLocaleString() || '0'}
-              </p>
-              <p style={{ color: '#64748b', margin: 0 }}>Aujourd'hui</p>
-            </div>
-          </div>
-        )}
-        
-        {/* Routes Section */}
-        {routes && routes.length > 0 && (
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '2rem',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            marginBottom: '2rem'
-          }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
-              🛩️ Routes Actives ({routes.length})
-            </h2>
-            
-            {/* Filtres par Tier */}
-            <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <button 
-                onClick={() => setFilterTier(0)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: filterTier === 0 ? '#1e40af' : '#f3f4f6',
-                  color: filterTier === 0 ? 'white' : '#374151',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Tous ({routes.length})
-              </button>
-              <button 
-                onClick={() => setFilterTier(1)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: filterTier === 1 ? '#dc2626' : '#fef2f2',
-                  color: filterTier === 1 ? 'white' : '#dc2626',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Tier 1 ({routes.filter((r: any) => r.tier === 1).length})
-              </button>
-              <button 
-                onClick={() => setFilterTier(2)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: filterTier === 2 ? '#d97706' : '#fef3c7',
-                  color: filterTier === 2 ? 'white' : '#d97706',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Tier 2 ({routes.filter((r: any) => r.tier === 2).length})
-              </button>
-              <button 
-                onClick={() => setFilterTier(3)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: filterTier === 3 ? '#16a34a' : '#f0fdf4',
-                  color: filterTier === 3 ? 'white' : '#16a34a',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem'
-                }}
-              >
-                Tier 3 ({routes.filter((r: any) => r.tier === 3).length})
-              </button>
-            </div>
-
-            {/* Liste des routes */}
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1rem',
-              maxHeight: '600px',
-              overflowY: 'auto'
-            }}>
-              {routes
-                .filter((route: any) => filterTier === 0 || route.tier === filterTier)
-                .map((route: any, index: number) => (
-                <div key={route._id || index} style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  padding: '1.5rem',
-                  backgroundColor: '#f9fafb',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 2fr 1fr',
-                  gap: '1.5rem',
-                  alignItems: 'center'
-                }}>
-                  {/* Informations principales */}
-                  <div>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1e293b', margin: '0 0 0.5rem 0' }}>
-                      {route.origin} → {route.destination}
-                    </h3>
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                      <span style={{
-                        padding: '0.2rem 0.5rem',
-                        backgroundColor: route.tier === 1 ? '#fef2f2' : 
-                                       route.tier === 2 ? '#fef3c7' : '#f0fdf4',
-                        color: route.tier === 1 ? '#dc2626' : 
-                               route.tier === 2 ? '#d97706' : '#16a34a',
-                        borderRadius: '4px',
-                        fontSize: '0.8rem',
-                        fontWeight: '600'
-                      }}>
-                        Tier {route.tier}
-                      </span>
-                      <span style={{
-                        padding: '0.2rem 0.5rem',
-                        backgroundColor: route.isActive ? '#dcfce7' : '#fef3c7',
-                        color: route.isActive ? '#16a34a' : '#d97706',
-                        borderRadius: '4px',
-                        fontSize: '0.8rem',
-                        fontWeight: '500'
-                      }}>
-                        {route.isActive ? 'Actif' : 'Inactif'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Détails techniques */}
-                  <div style={{ fontSize: '0.9rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                      <div>
-                        <span style={{ color: '#6b7280' }}>Fréquence scan:</span>
-                        <span style={{ fontWeight: 'bold', marginLeft: '0.3rem' }}>
-                          {route.scanFrequencyHours}h
-                        </span>
-                      </div>
-                      <div>
-                        <span style={{ color: '#6b7280' }}>Alertes totales:</span>
-                        <span style={{ fontWeight: 'bold', marginLeft: '0.3rem' }}>
-                          {route.performance?.totalAlerts || 0}
-                        </span>
-                      </div>
-                      <div>
-                        <span style={{ color: '#6b7280' }}>Réduction moy:</span>
-                        <span style={{ fontWeight: 'bold', marginLeft: '0.3rem' }}>
-                          {route.performance?.avgDiscount || 0}%
-                        </span>
-                      </div>
-                      <div>
-                        <span style={{ color: '#6b7280' }}>Taux clics:</span>
-                        <span style={{ fontWeight: 'bold', marginLeft: '0.3rem' }}>
-                          {route.performance?.clickRate || 0}%
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Métadonnées */}
-                    {route.metadata && (
-                      <div style={{ 
-                        backgroundColor: '#f3f4f6', 
-                        padding: '0.5rem', 
-                        borderRadius: '4px',
-                        fontSize: '0.8rem'
-                      }}>
-                        <div style={{ marginBottom: '0.3rem' }}>
-                          <strong>Remarque:</strong> {route.metadata.remarks}
-                        </div>
-                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                          <span><strong>Priorité:</strong> {route.metadata.priority}</span>
-                          <span><strong>Réduction attendue:</strong> {route.metadata.expectedDiscountRange}</span>
-                          <span><strong>Calls/scan:</strong> {route.metadata.estimatedCallsPerScan}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Scores saisonniers */}
-                  <div style={{ textAlign: 'right' }}>
-                    {route.seasonalScore && (
-                      <div style={{ fontSize: '0.8rem' }}>
-                        <div style={{ marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>
-                          Scores saisonniers:
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem' }}>
-                          <span style={{ color: '#6b7280' }}>Printemps:</span>
-                          <span style={{ fontWeight: 'bold' }}>{route.seasonalScore.spring}%</span>
-                          <span style={{ color: '#6b7280' }}>Été:</span>
-                          <span style={{ fontWeight: 'bold' }}>{route.seasonalScore.summer}%</span>
-                          <span style={{ color: '#6b7280' }}>Automne:</span>
-                          <span style={{ fontWeight: 'bold' }}>{route.seasonalScore.fall}%</span>
-                          <span style={{ color: '#6b7280' }}>Hiver:</span>
-                          <span style={{ fontWeight: 'bold' }}>{route.seasonalScore.winter}%</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {/* Users Section */}
-        {users && users.length > 0 && (
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '2rem',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            marginBottom: '2rem'
-          }}>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
-              👥 Utilisateurs ({users.length})
-            </h2>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '1rem'
-            }}>
-              {users.slice(0, 10).map((user: any, index: number) => (
-                <div key={user._id || index} style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  padding: '1rem',
-                  backgroundColor: '#f9fafb'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#1e293b', margin: '0 0 0.3rem 0' }}>
-                        {user.email}
-                      </h3>
-                      <p style={{ fontSize: '0.9rem', color: '#6b7280', margin: 0 }}>
-                        {user.createdAt ? `Créé le ${new Date(user.createdAt).toLocaleDateString()}` : 'Utilisateur système'}
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{
-                        padding: '0.2rem 0.5rem',
-                        backgroundColor: user.subscription_type === 'premium' ? '#dbeafe' : 
-                                       user.subscription_type === 'enterprise' ? '#fef3c7' : '#f3f4f6',
-                        color: user.subscription_type === 'premium' ? '#1d4ed8' : 
-                               user.subscription_type === 'enterprise' ? '#d97706' : '#6b7280',
-                        borderRadius: '4px',
-                        fontSize: '0.8rem',
-                        fontWeight: '500',
-                        textTransform: 'capitalize' as any
-                      }}>
-                        {user.subscription_type}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                    <p style={{ margin: '0.3rem 0' }}>
-                      <span style={{ fontWeight: '500' }}>Type:</span> {user.subscription_type}
-                    </p>
-                    {user.createdAt && (
-                      <p style={{ margin: '0.3rem 0' }}>
-                        <span style={{ fontWeight: '500' }}>Membre depuis:</span> {new Date(user.createdAt).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {users.length > 10 && (
-              <p style={{ textAlign: 'center', color: '#6b7280', marginTop: '1rem', fontSize: '0.9rem' }}>
-                ... et {users.length - 10} autres utilisateurs
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // Professional Marketing Landing Page
 const LandingPage: React.FC<{ 
   onAdminAccess: () => void;
@@ -2241,7 +1768,7 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
         <div style={{
-          backgroundColor: 'white',
+ backgroundColor: 'white',
           borderRadius: '12px',
           padding: '2rem',
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
@@ -2460,13 +1987,20 @@ const PremiumLogin: React.FC<{ onBack: () => void; onLogin: (user: User) => void
     setError('');
 
     try {
+      console.log('🔍 LOGIN DEBUG: Attempting login with:', { email, passwordLength: password?.length });
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
 
+      console.log('🔍 LOGIN DEBUG: Response status:', response.status);
+      console.log('🔍 LOGIN DEBUG: Response headers:', Object.fromEntries(response.headers.entries()));
+      console.log('🔍 LOGIN DEBUG: Response ok:', response.ok);
+
       const data = await response.json();
+      console.log('🔍 LOGIN DEBUG: Response data:', data);
 
       if (response.ok && data.token) {
         // Stocker les informations de connexion
@@ -2488,6 +2022,12 @@ const PremiumLogin: React.FC<{ onBack: () => void; onLogin: (user: User) => void
         setError(data.message || 'Email ou mot de passe incorrect');
       }
     } catch (error) {
+      console.log('🔍 LOGIN DEBUG: Catch block error:', error);
+      console.log('🔍 LOGIN DEBUG: Error details:', {
+        name: (error as any)?.name,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack
+      });
       setError('Erreur de connexion. Veuillez réessayer.');
     } finally {
       setLoading(false);
@@ -2661,6 +2201,28 @@ const PremiumLogin: React.FC<{ onBack: () => void; onLogin: (user: User) => void
           </button>
         </form>
 
+        {/* Forgot Password Link */}
+        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+          <button
+            onClick={() => {
+              alert('📧 Fonctionnalité de récupération de mot de passe\n\nCette fonctionnalité sera bientôt disponible.\nEn attendant, contactez-nous à support@globegenius.app pour réinitialiser votre mot de passe.');
+            }}
+            style={{
+              color: '#6b7280',
+              background: 'none',
+              border: 'none',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              transition: 'color 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+          >
+            🔑 Mot de passe oublié ?
+          </button>
+        </div>
+
         {/* Footer */}
         <div style={{
           textAlign: 'center',
@@ -2810,8 +2372,12 @@ const App: React.FC = () => {
   }, []);
 
   const handleAdminLogin = (user: User) => {
+    console.log('🔍 ADMIN LOGIN DEBUG: User received:', user);
+    console.log('🔍 ADMIN LOGIN DEBUG: User type:', user.type);
+    console.log('🔍 ADMIN LOGIN DEBUG: User subscription_type:', user.subscription_type);
     setCurrentUser(user);
     setCurrentPage('admin');
+    console.log('🔍 ADMIN LOGIN DEBUG: Set currentPage to admin');
   };
 
   const handlePremiumLogin = (user: User) => {
@@ -2875,9 +2441,18 @@ const App: React.FC = () => {
   }
 
   // Show admin dashboard (only for admin users)
-  if (currentPage === 'admin' && currentUser?.type === 'admin') {
+  if (currentPage === 'admin' && (currentUser?.type === 'admin' || currentUser?.subscription_type === 'enterprise')) {
+    console.log('🔍 RENDER DEBUG: Showing admin dashboard');
     return <AdminDashboard />;
   }
+
+  console.log('🔍 RENDER DEBUG: Showing landing page', {
+    currentPage,
+    currentUser: currentUser ? {
+      type: currentUser.type,
+      subscription_type: currentUser.subscription_type
+    } : null
+  });
 
   // Show landing page (default) - AVEC bouton debug temporaire
   return (

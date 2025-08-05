@@ -2,6 +2,20 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FinancialTab, FlightTab } from '../components/KPITabs';
 
+// User Management Interfaces
+interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  subscription_type: 'free' | 'premium' | 'enterprise';
+  additionalAirports: string[];
+  dreamDestinations: any[];
+  onboardingCompleted: boolean;
+  profileCompleteness: number;
+  createdAt: string;
+  lastLogin?: string;
+}
+
 // KPI Data Interfaces
 interface KPIDashboardData {
   period: {
@@ -150,6 +164,14 @@ const EnhancedAdminDashboard: React.FC = () => {
   const [realtimeData, setRealtimeData] = useState<RealtimeData | null>(null);
   const [userAnalytics, setUserAnalytics] = useState<UserAnalytics | null>(null);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
+  
+  // User Management States
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     // Check authentication
@@ -195,7 +217,8 @@ const EnhancedAdminDashboard: React.FC = () => {
         fetchDashboardData(),
         fetchRealtimeData(),
         fetchUserAnalytics(),
-        fetchSystemMetrics()
+        fetchSystemMetrics(),
+        fetchUsers()
       ]);
       setLoading(false);
     } catch (error) {
@@ -244,6 +267,72 @@ const EnhancedAdminDashboard: React.FC = () => {
     } catch (error) {
       console.error('Error fetching system metrics:', error);
     }
+  };
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await axios.get('/api/admin/users');
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const updateUserSubscription = async (userId: string, newSubscription: 'free' | 'premium' | 'enterprise') => {
+    try {
+      await axios.put(`/api/admin/users/${userId}/subscription`, {
+        subscription_type: newSubscription
+      });
+      
+      // Update local state
+      setUsers(users.map(user => 
+        user.id === userId 
+          ? { ...user, subscription_type: newSubscription }
+          : user
+      ));
+
+      // Close modal and refresh data
+      setShowUserModal(false);
+      setSelectedUser(null);
+      
+      alert(`Abonnement mis à jour vers ${newSubscription} avec succès!`);
+    } catch (error) {
+      console.error('Error updating user subscription:', error);
+      alert('Erreur lors de la mise à jour de l\'abonnement');
+    }
+  };
+
+  const deleteUser = async (userId: string) => {
+    setUserToDelete(userId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      await axios.delete(`/api/admin/users/${userToDelete}`);
+      
+      // Update local state
+      setUsers(users.filter(user => user.id !== userToDelete));
+      setShowUserModal(false);
+      setShowDeleteConfirm(false);
+      setUserToDelete(null);
+      setSelectedUser(null);
+      
+      alert('Utilisateur supprimé avec succès!');
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Erreur lors de la suppression de l\'utilisateur');
+    }
+  };
+
+  const cancelDeleteUser = () => {
+    setShowDeleteConfirm(false);
+    setUserToDelete(null);
   };
 
   const handleLogout = () => {
@@ -507,44 +596,170 @@ const EnhancedAdminDashboard: React.FC = () => {
         )}
 
         {/* Users Tab */}
-        {activeTab === 'users' && userAnalytics && (
+        {activeTab === 'users' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <MetricCard
-                title="Ratio d'Engagement"
-                value={`${userAnalytics.engagement.activeUsersRatio.toFixed(1)}%`}
-                subtitle="Utilisateurs actifs"
-                icon="📊"
-              />
-              <MetricCard
-                title="Alertes par Utilisateur"
-                value={userAnalytics.engagement.avgAlertsPerUser.toFixed(1)}
-                subtitle="Moyenne"
-                icon="🚨"
-              />
-              <MetricCard
-                title="Valeur Vie Client (LTV)"
-                value={formatCurrency(userAnalytics.lifetimeValue.premiumLTV)}
-                subtitle="Premium"
-                icon="💎"
-              />
-            </div>
+            {/* User Analytics Overview */}
+            {userAnalytics && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <MetricCard
+                  title="Ratio d'Engagement"
+                  value={`${userAnalytics.engagement.activeUsersRatio.toFixed(1)}%`}
+                  subtitle="Utilisateurs actifs"
+                  icon="📊"
+                />
+                <MetricCard
+                  title="Alertes par Utilisateur"
+                  value={userAnalytics.engagement.avgAlertsPerUser.toFixed(1)}
+                  subtitle="Moyenne"
+                  icon="🚨"
+                />
+                <MetricCard
+                  title="Valeur Vie Client (LTV)"
+                  value={formatCurrency(userAnalytics.lifetimeValue.premiumLTV)}
+                  subtitle="Premium"
+                  icon="💎"
+                />
+              </div>
+            )}
 
-            {/* Subscription Distribution */}
+            {/* User Management Section */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-semibold mb-4">📊 Répartition des Abonnements</h3>
-              <div className="space-y-4">
-                {userAnalytics.subscription.map((sub, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <span className="font-medium capitalize">{sub.subscriptionType}</span>
-                      <p className="text-sm text-gray-600">
-                        {sub.avgAlertsReceived !== null ? `${sub.avgAlertsReceived.toFixed(1)} alertes moy.` : 'Pas de données'}
-                      </p>
-                    </div>
-                    <span className="text-2xl font-bold text-blue-600">{sub.userCount}</span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold">👥 Gestion des Utilisateurs</h3>
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-gray-600">
+                    {users.length} utilisateur{users.length > 1 ? 's' : ''} total
+                  </span>
+                  <button
+                    onClick={fetchUsers}
+                    disabled={loadingUsers}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  >
+                    {loadingUsers ? '🔄 Actualisation...' : '🔄 Actualiser'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Users Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Utilisateur
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Email
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Abonnement
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Onboarding
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Dernière connexion
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {loadingUsers ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                          🔄 Chargement des utilisateurs...
+                        </td>
+                      </tr>
+                    ) : users.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                          Aucun utilisateur trouvé
+                        </td>
+                      </tr>
+                    ) : (
+                      users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-10 w-10">
+                                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                  <span className="text-sm font-medium text-blue-600">
+                                    {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {user.name || 'N/A'}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  ID: {user.id.slice(-8)}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{user.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              user.subscription_type === 'enterprise' 
+                                ? 'bg-purple-100 text-purple-800'
+                                : user.subscription_type === 'premium'
+                                ? 'bg-gold-100 text-gold-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {user.subscription_type === 'enterprise' ? '👑 Enterprise' :
+                               user.subscription_type === 'premium' ? '💎 Premium' : '🆓 Gratuit'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                user.onboardingCompleted 
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                              }`}>
+                                {user.onboardingCompleted ? '✅ Terminé' : '⏳ En cours'}
+                              </span>
+                              <span className="ml-2 text-xs text-gray-500">
+                                {user.profileCompleteness}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {user.lastLogin 
+                              ? new Date(user.lastLogin).toLocaleDateString('fr-FR')
+                              : 'Jamais'
+                            }
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowUserModal(true);
+                              }}
+                              className="text-blue-600 hover:text-blue-900 mr-4"
+                            >
+                              👁️ Voir
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowUserModal(true);
+                              }}
+                              className="text-green-600 hover:text-green-900"
+                            >
+                              ⚙️ Gérer
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -756,6 +971,207 @@ const EnhancedAdminDashboard: React.FC = () => {
           <FlightTab timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
         )}
       </main>
+
+      {/* User Management Modal */}
+      {showUserModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold">👤 Gestion Utilisateur</h3>
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setSelectedUser(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* User Info */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Nom</label>
+                  <p className="text-lg">{selectedUser.name || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Email</label>
+                  <p className="text-lg">{selectedUser.email}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Abonnement Actuel</label>
+                  <p className={`text-lg font-semibold ${
+                    selectedUser.subscription_type === 'enterprise' ? 'text-purple-600' :
+                    selectedUser.subscription_type === 'premium' ? 'text-yellow-600' : 'text-gray-600'
+                  }`}>
+                    {selectedUser.subscription_type === 'enterprise' ? '👑 Enterprise' :
+                     selectedUser.subscription_type === 'premium' ? '💎 Premium' : '🆓 Gratuit'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Onboarding</label>
+                  <p className="text-lg">
+                    {selectedUser.onboardingCompleted ? '✅ Terminé' : '⏳ En cours'} ({selectedUser.profileCompleteness}%)
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Membre depuis</label>
+                  <p className="text-lg">{new Date(selectedUser.createdAt).toLocaleDateString('fr-FR')}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Dernière connexion</label>
+                  <p className="text-lg">
+                    {selectedUser.lastLogin 
+                      ? new Date(selectedUser.lastLogin).toLocaleDateString('fr-FR')
+                      : 'Jamais'
+                    }
+                  </p>
+                </div>
+              </div>
+
+              {/* Additional Info */}
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Aéroports supplémentaires</label>
+                  <p className="text-sm">
+                    {selectedUser.additionalAirports.length > 0 
+                      ? selectedUser.additionalAirports.join(', ')
+                      : 'Aucun'
+                    }
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-600">Destinations de rêve</label>
+                  <p className="text-sm">
+                    {selectedUser.dreamDestinations.length > 0 
+                      ? `${selectedUser.dreamDestinations.length} destination(s)`
+                      : 'Aucune'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Subscription Management */}
+            <div className="mb-6">
+              <h4 className="text-lg font-semibold mb-4">🔧 Gestion de l'Abonnement</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button
+                  onClick={() => updateUserSubscription(selectedUser.id, 'free')}
+                  disabled={selectedUser.subscription_type === 'free'}
+                  className={`p-4 rounded-lg border-2 transition-colors ${
+                    selectedUser.subscription_type === 'free'
+                      ? 'border-gray-300 bg-gray-100 text-gray-500 cursor-not-allowed'
+                      : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-2xl mb-2">🆓</div>
+                    <div className="font-medium">Gratuit</div>
+                    <div className="text-sm text-gray-600">Basique</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => updateUserSubscription(selectedUser.id, 'premium')}
+                  disabled={selectedUser.subscription_type === 'premium'}
+                  className={`p-4 rounded-lg border-2 transition-colors ${
+                    selectedUser.subscription_type === 'premium'
+                      ? 'border-yellow-300 bg-yellow-100 text-yellow-700 cursor-not-allowed'
+                      : 'border-yellow-300 hover:border-yellow-400 hover:bg-yellow-50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-2xl mb-2">💎</div>
+                    <div className="font-medium">Premium</div>
+                    <div className="text-sm text-gray-600">Avancé</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => updateUserSubscription(selectedUser.id, 'enterprise')}
+                  disabled={selectedUser.subscription_type === 'enterprise'}
+                  className={`p-4 rounded-lg border-2 transition-colors ${
+                    selectedUser.subscription_type === 'enterprise'
+                      ? 'border-purple-300 bg-purple-100 text-purple-700 cursor-not-allowed'
+                      : 'border-purple-300 hover:border-purple-400 hover:bg-purple-50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-2xl mb-2">👑</div>
+                    <div className="font-medium">Enterprise</div>
+                    <div className="text-sm text-gray-600">Admin</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            {selectedUser.subscription_type !== 'enterprise' && (
+              <div className="border-t pt-6">
+                <h4 className="text-lg font-semibold text-red-600 mb-4">⚠️ Zone Dangereuse</h4>
+                <button
+                  onClick={() => deleteUser(selectedUser.id)}
+                  className="bg-red-600 text-white px-6 py-2 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  🗑️ Supprimer l'utilisateur
+                </button>
+                <p className="text-sm text-gray-600 mt-2">
+                  Cette action est irréversible. L'utilisateur et toutes ses données seront supprimés.
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-4 mt-6">
+              <button
+                onClick={() => {
+                  setShowUserModal(false);
+                  setSelectedUser(null);
+                }}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <span className="text-red-600 text-xl">⚠️</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Confirmer la suppression
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible et toutes les données de l'utilisateur seront supprimées.
+              </p>
+              <div className="flex space-x-4">
+                <button
+                  onClick={cancelDeleteUser}
+                  className="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={confirmDeleteUser}
+                  className="flex-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IUser extends Document {
   email: string;
+  name: string;
   password: string;
   subscription_type: 'free' | 'premium' | 'enterprise';
   lastLogin?: Date;

@@ -22,8 +22,10 @@ router.get('/users', async (req, res) => {
     const usersWithStats = users.map(user => ({
       id: user._id,
       email: user.email,
+      name: user.name || 'N/A',
       subscription_type: user.subscription_type,
       additionalAirports: user.preferences?.additionalAirports || [],
+      dreamDestinations: user.preferences?.dreamDestinations || [],
       onboardingCompleted: user.onboardingCompleted || false,
       profileCompleteness: user.profileCompleteness || 0,
       createdAt: user.createdAt,
@@ -33,6 +35,152 @@ router.get('/users', async (req, res) => {
     res.json(usersWithStats);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching users', error });
+  }
+});
+
+// Update user subscription type (upgrade/downgrade)
+router.put('/users/:userId/subscription', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { subscription_type } = req.body;
+
+    // Validate subscription type
+    if (!['free', 'premium', 'enterprise'].includes(subscription_type)) {
+      return res.status(400).json({ 
+        message: 'Invalid subscription type. Must be free, premium, or enterprise.' 
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { subscription_type },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Log the subscription change for audit
+    logger.info('Admin subscription change', {
+      userId: user._id,
+      email: user.email,
+      oldSubscription: req.body.oldSubscription,
+      newSubscription: subscription_type,
+      adminAction: true
+    });
+
+    res.json({
+      message: `User subscription updated to ${subscription_type}`,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        subscription_type: user.subscription_type,
+        updatedAt: new Date()
+      }
+    });
+  } catch (error) {
+    logger.error('Error updating user subscription:', error);
+    res.status(500).json({ message: 'Error updating user subscription', error });
+  }
+});
+
+// Delete user account (admin only)
+router.delete('/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Prevent deletion of admin users
+    if (user.subscription_type === 'enterprise') {
+      return res.status(403).json({ 
+        message: 'Cannot delete enterprise users (admin accounts)' 
+      });
+    }
+
+    // Delete user and related data
+    await Promise.all([
+      User.findByIdAndDelete(userId),
+      Alert.deleteMany({ 'sentTo.user': userId })
+    ]);
+
+    // Log the deletion for audit
+    logger.warn('Admin user deletion', {
+      deletedUserId: userId,
+      deletedUserEmail: user.email,
+      adminAction: true
+    });
+
+    res.json({
+      message: 'User account deleted successfully',
+      deletedUser: {
+        id: userId,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    logger.error('Error deleting user:', error);
+    res.status(500).json({ message: 'Error deleting user account', error });
+  }
+});
+
+// Get detailed user information
+router.get('/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get user's alert statistics
+    const alertStats = await Alert.aggregate([
+      { $match: { 'sentTo.user': user._id } },
+      {
+        $group: {
+          _id: null,
+          totalAlerts: { $sum: 1 },
+          totalSavings: {
+            $sum: {
+              $multiply: [
+                '$price',
+                { $divide: ['$discountPercentage', 100] }
+              ]
+            }
+          },
+          avgDiscount: { $avg: '$discountPercentage' }
+        }
+      }
+    ]);
+
+    const stats = alertStats[0] || { totalAlerts: 0, totalSavings: 0, avgDiscount: 0 };
+
+    res.json({
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        subscription_type: user.subscription_type,
+        preferences: user.preferences,
+        onboardingCompleted: user.onboardingCompleted,
+        profileCompleteness: user.profileCompleteness,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin
+      },
+      stats: {
+        totalAlerts: stats.totalAlerts,
+        totalSavings: Math.round(stats.totalSavings),
+        avgDiscount: Math.round(stats.avgDiscount || 0)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching user details', error });
   }
 });
 

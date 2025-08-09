@@ -33,8 +33,10 @@ router.post('/newsletter',
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(tempPassword, salt);
 
+    const defaultName = (email && typeof email === 'string') ? (email.split('@')[0] || 'Subscriber') : 'Subscriber';
     const user = new User({
       email,
+      name: defaultName,
       password: hashedPassword,
       subscription_type: 'free'
     });

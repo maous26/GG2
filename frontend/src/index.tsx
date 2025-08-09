@@ -2078,6 +2078,7 @@ const App: React.FC = () => {
     <EnhancedLandingPage 
       onAdminAccess={() => setCurrentPage('admin-login')}
       onPremiumSignup={() => setCurrentPage('premium-signup')}
+      onPremiumLogin={() => setCurrentPage('premium-login')}
     />
   );
 };

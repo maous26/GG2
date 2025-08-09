@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 interface EnhancedLandingPageProps {
   onAdminAccess?: () => void;
   onPremiumSignup?: () => void;
+  onPremiumLogin?: () => void;
 }
 
 const EnhancedLandingPage: React.FC<EnhancedLandingPageProps> = ({ 
   onAdminAccess, 
-  onPremiumSignup 
+  onPremiumSignup,
+  onPremiumLogin
 }) => {
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -331,6 +333,23 @@ const EnhancedLandingPage: React.FC<EnhancedLandingPageProps> = ({
         >
           🚀 DEVENIR PREMIUM
         </button>
+
+        {/* Premium login link */}
+        <div style={{ marginTop: '0.25rem', marginBottom: '0.75rem' }}>
+          <button
+            onClick={() => onPremiumLogin && onPremiumLogin()}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Déjà Premium ? Se connecter
+          </button>
+        </div>
 
         <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '1rem' }}>
           <strong>4,99€/mois</strong> ou payable en une fois <strong>49,90€</strong><br/>

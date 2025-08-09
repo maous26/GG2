@@ -235,10 +235,67 @@ const EnhancedAdminDashboard: React.FC = () => {
     }
   };
 
+  // Normalize backend dashboard payload to the UI's expected shape
+  const normalizeDashboardData = (d: any): KPIDashboardData => {
+    const users = d?.users || {};
+    const flights = d?.flights || {};
+    const perf = d?.performance || {};
+    const totalUsers = users.total || 0;
+    const premiumUsers = users.premium || 0;
+    const conversionRate = typeof users.conversionRate === 'number'
+      ? users.conversionRate
+      : (totalUsers > 0 ? (premiumUsers / totalUsers) * 100 : 0);
+
+    return {
+      period: d?.period || { range: timeRange, startDate: '', endDate: '' },
+      users: {
+        total: totalUsers,
+        active: users.active || 0,
+        new: users.new || 0,
+        premium: premiumUsers,
+        enterprise: users.enterprise || 0,
+        retention: users.retention || 0,
+        growth: users.growth || 0,
+        conversionRate
+      },
+      flights: {
+        totalRoutes: flights.totalRoutes || 0,
+        activeRoutes: flights.activeRoutes || 0,
+        totalScans: flights.totalScans || 0,
+        successfulScans: flights.successfulScans || 0,
+        scanSuccessRate: flights.scanSuccessRate || 0,
+        totalAlerts: (typeof flights.totalAlerts === 'number' ? flights.totalAlerts : (flights.alerts24h || 0)),
+        alertsConversionRate: flights.alertsConversionRate || 0,
+        avgAlertsPerRoute: (typeof flights.avgAlertsPerRoute === 'number' ? flights.avgAlertsPerRoute : (flights.avgAlertsPerActiveRoute || 0))
+      },
+      financial: {
+        totalSavings: d?.financial?.totalSavings || 0,
+        avgSavingsPerAlert: d?.financial?.avgSavingsPerAlert || 0,
+        premiumRevenue: d?.financial?.premiumRevenue || 0,
+        revenuePerUser: d?.financial?.revenuePerUser || 0,
+        savingsToRevenueRatio: d?.financial?.savingsToRevenueRatio || 0
+      },
+      performance: {
+        avgResponseTime: perf.avgResponseTime || 0,
+        systemUptime: perf.systemUptime || 0,
+        apiCallsSuccess: perf.apiCallsSuccess || 0,
+        errorRate: perf.errorRate || 0,
+        availability: perf.availability || 'unknown'
+      },
+      ai: {
+        maturityScore: d?.ai?.maturityScore || 0,
+        predictionAccuracy: d?.ai?.predictionAccuracy || 0,
+        readyForAutonomy: d?.ai?.readyForAutonomy || false,
+        riskLevel: d?.ai?.riskLevel || 'unknown'
+      },
+      trends: Array.isArray(d?.trends) ? d.trends : []
+    };
+  };
+
   const fetchDashboardData = async () => {
     try {
       const response = await axios.get(`/api/admin/kpis/dashboard?range=${timeRange}`);
-      setDashboardData(response.data);
+      setDashboardData(normalizeDashboardData(response.data));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import EnhancedAdminDashboard from './pages/EnhancedAdminDashboard';
-import AdaptivePricingUserView from './components/AdaptivePricingUserView';
 import EnhancedLandingPage from './components/EnhancedLandingPage';
 
 // AdminDashboard wrapper component
@@ -1193,6 +1192,8 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
   const [userStats, setUserStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
+  const [passwordMsg, setPasswordMsg] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -1313,7 +1314,6 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
             <div style={{ display: 'flex', gap: '2rem' }}>
               {[
                 { id: 'overview', name: 'Vue d\'ensemble', icon: '📊' },
-                { id: 'adaptive', name: 'Prix Adaptatif IA', icon: '🧠' },
                 { id: 'preferences', name: 'Préférences', icon: '⚙️' }
               ].map((tab) => (
                 <button
@@ -1497,12 +1497,7 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
         )}
 
         {/* Adaptive Pricing Tab */}
-        {activeTab === 'adaptive' && (
-          <AdaptivePricingUserView user={{
-            email: user.email,
-            subscription_type: user.subscription_type || 'premium'
-          }} />
-        )}
+        {/* adaptive tab removed */}
 
         {/* User Preferences Tab */}
         {activeTab === 'preferences' && (
@@ -1513,7 +1508,7 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
             boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
           }}>
             <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '1.5rem' }}>
-              ⚙️ Préférences de Voyage
+              ⚙️ Préférences & Compte
             </h2>
             
             <div style={{
@@ -1533,13 +1528,63 @@ const PremiumDashboard: React.FC<{ user: User; onLogout: () => void }> = ({ user
               </p>
             </div>
 
-            <div style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔧</div>
-              <h3 style={{ margin: '0 0 0.5rem 0' }}>Configuration Intelligente</h3>
-              <p style={{ margin: 0 }}>
-                Vos préférences sont maintenant gérées par notre système adaptatif. 
-                L'IA optimise automatiquement vos alertes pour maximiser vos économies.
-              </p>
+            {/* Onboarding recap */}
+            {userStats && (
+              <div style={{
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '1rem',
+                marginTop: '1.5rem'
+              }}>
+                <h3 style={{ margin: '0 0 0.75rem 0', color: '#334155' }}>📝 Récapitulatif de votre onboarding</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '0.75rem' }}>
+                  <div><strong>Type de voyageur:</strong> {userStats?.preferences?.travelerType || '—'}</div>
+                  <div><strong>Style de notifications:</strong> {userStats?.preferences?.notificationStyle || '—'}</div>
+                  <div><strong>Aéroports additionnels:</strong> {userStats?.preferences?.additionalAirports?.join(', ') || 'Aucun'}</div>
+                  <div><strong>Destinations de rêve:</strong> {Array.isArray(userStats?.preferences?.dreamDestinations) ? userStats?.preferences?.dreamDestinations.length : 0}</div>
+                  <div><strong>Budget:</strong> {userStats?.preferences?.budgetRange ? `${userStats.preferences.budgetRange.min}-${userStats.preferences.budgetRange.max} ${userStats.preferences.budgetRange.currency || 'EUR'}` : '—'}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Password reset */}
+            <div style={{
+              marginTop: '2rem',
+              paddingTop: '1.5rem',
+              borderTop: '1px solid #e5e7eb'
+            }}>
+              <h3 style={{ margin: '0 0 0.75rem 0', color: '#374151' }}>🔐 Changer le mot de passe</h3>
+              <div style={{ display: 'grid', gap: '0.75rem', maxWidth: 420 }}>
+                <input type="password" placeholder="Mot de passe actuel" value={passwordForm.currentPassword} onChange={(e)=>setPasswordForm({...passwordForm,currentPassword:e.target.value})} style={{padding:'10px',border:'1px solid #d1d5db',borderRadius:8}} />
+                <input type="password" placeholder="Nouveau mot de passe" value={passwordForm.newPassword} onChange={(e)=>setPasswordForm({...passwordForm,newPassword:e.target.value})} style={{padding:'10px',border:'1px solid #d1d5db',borderRadius:8}} />
+                <input type="password" placeholder="Confirmer le nouveau mot de passe" value={passwordForm.confirm} onChange={(e)=>setPasswordForm({...passwordForm,confirm:e.target.value})} style={{padding:'10px',border:'1px solid #d1d5db',borderRadius:8}} />
+                <button onClick={async()=>{
+                  setPasswordMsg('');
+                  if(!passwordForm.currentPassword || !passwordForm.newPassword || passwordForm.newPassword!==passwordForm.confirm){
+                    setPasswordMsg('Veuillez remplir correctement le formulaire.');
+                    return;
+                  }
+                  try{
+                    const token = localStorage.getItem('token');
+                    const res = await fetch('/api/users/password',{
+                      method:'PUT',
+                      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+                      body: JSON.stringify({ currentPassword: passwordForm.currentPassword, newPassword: passwordForm.newPassword })
+                    });
+                    const data = await res.json();
+                    if(res.ok){
+                      setPasswordMsg('Mot de passe mis à jour avec succès.');
+                      setPasswordForm({ currentPassword:'', newPassword:'', confirm:'' });
+                    } else {
+                      setPasswordMsg(data?.message || 'Erreur lors de la mise à jour du mot de passe');
+                    }
+                  }catch(err){
+                    setPasswordMsg('Erreur réseau.');
+                  }
+                }} style={{padding:'10px 14px',background:'#3b82f6',color:'#fff',border:'none',borderRadius:8,cursor:'pointer'}}>Mettre à jour</button>
+                {passwordMsg && <div style={{color:'#374151'}}>{passwordMsg}</div>}
+              </div>
             </div>
           </div>
         )}

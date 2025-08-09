@@ -7,6 +7,7 @@ import StrategicRoute from '../models/StrategicRoute';
 import PricePrediction from '../models/PricePrediction';
 import { IntelligentPricingService } from '../services/intelligentPricingService';
 import { authenticateToken } from '../middleware/auth.middleware';
+import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
@@ -20,6 +21,36 @@ interface AuthRequest extends Request {
 
 // Middleware d'authentification pour toutes les routes utilisateur
 router.use(authenticateToken);
+
+// PUT /api/users/password - Changer le mot de passe
+router.put('/password', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { currentPassword, newPassword } = req.body || {};
+
+    if (!userId) return res.status(401).json({ message: 'Non autorisé' });
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Champs requis manquants' });
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(400).json({ message: 'Mot de passe actuel incorrect' });
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    return res.json({ message: 'Mot de passe mis à jour avec succès' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Erreur lors de la mise à jour du mot de passe' });
+  }
+});
 
 // GET /api/users/stats - Statistiques utilisateur
 router.get('/stats', async (req: AuthRequest, res: Response) => {

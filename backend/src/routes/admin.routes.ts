@@ -669,93 +669,37 @@ router.post('/security/block-ip',
 // Enhanced KPI Endpoints for Admin Console
 
 // Get comprehensive KPI dashboard data
+// Concise monitoring dashboard: essentials only
 router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) => {
   const timeRange = req.query.range || '7d'; // 24h, 7d, 30d, 90d
   const now = new Date();
   const startDate = KPIService.getStartDate(timeRange as string);
 
   const [
-    // User Metrics
     totalUsers,
     activeUsers,
-    newUsers,
     premiumUsers,
-    enterpriseUsers,
-    userRetentionRate,
-    
-    // Flight & Route Metrics
     totalRoutes,
     activeRoutes,
-    totalScans,
-    successfulScans,
     totalAlerts,
-    alertsConversionRate,
-    
-    // Financial Metrics
-    totalSavings,
-    avgSavingsPerAlert,
-    premiumRevenue,
-    
-    // System Performance
     avgResponseTime,
     systemUptime,
     apiCallsSuccess,
-    errorRate,
-    
-    // ML & AI Metrics
-    mlMaturity,
-    predictionAccuracy,
-    
-    // Daily trends
-    dailyMetrics
+    errorRate
   ] = await Promise.all([
-    // User Metrics
     User.countDocuments(),
     User.countDocuments({ lastLogin: { $gte: startDate } }),
-    User.countDocuments({ createdAt: { $gte: startDate } }),
     User.countDocuments({ subscription_type: 'premium' }),
-    User.countDocuments({ subscription_type: 'enterprise' }),
-    KPIService.calculateUserRetention(startDate),
-    
-    // Flight & Route Metrics
     Route.countDocuments(),
     Route.countDocuments({ isActive: true }),
-    ApiCall.countDocuments({ 
-      createdAt: { $gte: startDate },
-      endpoint: { $regex: /scan|flight/ }
-    }),
-    ApiCall.countDocuments({ 
-      createdAt: { $gte: startDate },
-      endpoint: { $regex: /scan|flight/ },
-      status: { $lt: 400 }
-    }),
     Alert.countDocuments({ detectedAt: { $gte: startDate } }),
-    KPIService.calculateAlertConversionRate(startDate),
-    
-    // Financial Metrics
-    KPIService.calculateTotalSavings(startDate),
-    KPIService.calculateAvgSavingsPerAlert(startDate),
-    KPIService.calculatePremiumRevenue(startDate),
-    
-    // System Performance
     KPIService.calculateAvgResponseTime(startDate),
     KPIService.calculateSystemUptime(startDate),
-    ApiCall.countDocuments({ 
-      createdAt: { $gte: startDate },
-      status: { $lt: 400 }
-    }),
-    KPIService.calculateErrorRate(startDate),
-    
-    // ML Metrics
-    KPIService.getLatestMLMaturity(),
-    KPIService.calculatePredictionAccuracy(startDate),
-    
-    // Daily trends
-    KPIService.getDailyMetricsTrends(startDate)
+    ApiCall.countDocuments({ createdAt: { $gte: startDate }, status: { $lt: 400 } }),
+    KPIService.calculateErrorRate(startDate)
   ]);
 
-  const scanSuccessRate = totalScans > 0 ? (successfulScans / totalScans) * 100 : 0;
-  const userGrowthRate = await KPIService.calculateGrowthRate(newUsers, timeRange as string);
+  // No derived heavy ratios; keep simple
 
   res.json({
     period: {
@@ -766,29 +710,13 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
     users: {
       total: totalUsers,
       active: activeUsers,
-      new: newUsers,
-      premium: premiumUsers,
-      enterprise: enterpriseUsers,
-      retention: userRetentionRate,
-      growth: userGrowthRate,
-      conversionRate: premiumUsers > 0 ? (premiumUsers / totalUsers) * 100 : 0
+      premium: premiumUsers
     },
     flights: {
       totalRoutes,
       activeRoutes,
-      totalScans,
-      successfulScans,
-      scanSuccessRate,
-      totalAlerts,
-      alertsConversionRate,
-      avgAlertsPerRoute: activeRoutes > 0 ? totalAlerts / activeRoutes : 0
-    },
-    financial: {
-      totalSavings,
-      avgSavingsPerAlert,
-      premiumRevenue,
-      revenuePerUser: totalUsers > 0 ? premiumRevenue / totalUsers : 0,
-      savingsToRevenueRatio: premiumRevenue > 0 ? totalSavings / premiumRevenue : 0
+      alerts24h: totalAlerts,
+      avgAlertsPerActiveRoute: activeRoutes > 0 ? totalAlerts / activeRoutes : 0
     },
     performance: {
       avgResponseTime,
@@ -796,14 +724,7 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
       apiCallsSuccess,
       errorRate,
       availability: systemUptime > 99 ? 'excellent' : systemUptime > 95 ? 'good' : 'needs-attention'
-    },
-    ai: {
-      maturityScore: mlMaturity?.maturityScore || 0,
-      predictionAccuracy,
-      readyForAutonomy: mlMaturity?.recommendations?.readyForAutonomy || false,
-      riskLevel: mlMaturity?.recommendations?.riskLevel || 'unknown'
-    },
-    trends: dailyMetrics
+    }
   });
 }));
 

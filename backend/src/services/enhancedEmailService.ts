@@ -328,7 +328,8 @@ ${this.getAirlineBaggageTip(data.airline)}
 
     // naive geo check: consider Europe/North Africa short-haul
     const shortHaul = ['LHR','AMS','FCO','BCN','MAD','LIS','BER','VIE','BUD','CMN','RAK','TUN','ALG','FES','OUD','AGA'].includes(destination);
-    const minStay = shortHaul ? 7 : 10;
+    const esPt = new Set(['MAD','BCN','AGP','PMI','IBZ','VLC','SVQ','TFS','TFN','LPA','ACE','FUE','BIO','XRY','MAH','LIS','OPO','FAO','FNC','PDL']);
+    const minStay = esPt.has(destination) ? 5 : (shortHaul ? 7 : 10);
 
     const start1 = addDays(today, 30 + 15); // J+45
     const start2 = addDays(today, 30 + 40); // J+70

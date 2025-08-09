@@ -204,39 +204,23 @@ export class FlightAPIService {
         children = 0,
         infants = 0,
         cabin = 'Economy',
-        currency = 'USD'
+        currency = 'EUR'
       } = options;
 
-      let response: FlightAPIResponse;
-
-      if (returnDate) {
-        // Round trip request
-        response = await this.makeRoundTripRequest({
-          departure_airport_code: route.origin,
-          arrival_airport_code: route.destination,
-          departure_date: departureDate,
-          arrival_date: returnDate,
-          number_of_adults: adults.toString(),
-          number_of_childrens: children.toString(),
-          number_of_infants: infants.toString(),
-          cabin_class: cabin,
-          currency,
-          region: 'US' // Default region, could be made configurable
-        });
-      } else {
-        // One way request
-        response = await this.makeOneWayRequest({
-          departure_airport_code: route.origin,
-          arrival_airport_code: route.destination,
-          departure_date: departureDate,
-          number_of_adults: adults.toString(),
-          number_of_childrens: children.toString(),
-          number_of_infants: infants.toString(),
-          cabin_class: cabin,
-          currency,
-          region: 'US'
-        });
-      }
+      // Provider doc: roundtrip endpoint; if no return date, synthesize one with min-stay rules
+      const synthesizedReturn = returnDate || this.computeReturnDateByRules(route.origin, route.destination, departureDate);
+      const response: FlightAPIResponse = await this.makeRoundTripRequest({
+        departure_airport_code: route.origin,
+        arrival_airport_code: route.destination,
+        departure_date: departureDate,
+        arrival_date: synthesizedReturn,
+        number_of_adults: adults.toString(),
+        number_of_childrens: children.toString(),
+        number_of_infants: infants.toString(),
+        cabin_class: cabin,
+        currency,
+        region: this.getIsoRegionForOrigin(route.origin)
+      });
 
       console.log(`✅ [FlightAPI] ${response.itineraries?.length || 0} flight options found for ${route.origin}-${route.destination}`);
 
@@ -295,22 +279,7 @@ export class FlightAPIService {
   /**
    * Make a one way request to FlightAPI
    */
-  private async makeOneWayRequest(params: {
-    departure_airport_code: string;
-    arrival_airport_code: string;
-    departure_date: string;
-    number_of_adults: string;
-    number_of_childrens: string;
-    number_of_infants: string;
-    cabin_class: string;
-    currency: string;
-    region: string;
-  }): Promise<FlightAPIResponse> {
-    const url = `${this.baseUrl}/oneway/${this.apiKey}/${params.departure_airport_code}/${params.arrival_airport_code}/${params.departure_date}/${params.number_of_adults}/${params.number_of_childrens}/${params.number_of_infants}/${params.cabin_class}/${params.currency}`;
-    
-    const response = await this.makeApiCall<FlightAPIResponse>(url);
-    return response;
-  }
+  // oneway disabled: provider focuses on roundtrip pricing. If needed, re-enable later.
 
   /**
    * Convert FlightAPI response to internal FlightPrice format
@@ -350,7 +319,7 @@ export class FlightAPIService {
         validatingAirline: this.getAirlineFromCarrierId(segments[0]?.marketing_carrier_id, response.carriers),
         departureDate: options.departureDate || this.getDefaultDepartureDate(),
         returnDate: options.returnDate,
-        tripType: options.returnDate ? 'roundtrip' : 'oneway',
+         tripType: 'roundtrip',
         adults: options.adults || 1,
         children: options.children || 0,
         infants: options.infants || 0,
@@ -530,6 +499,21 @@ export class FlightAPIService {
     throw lastError;
   }
 
+  // Compute return date by simple min-stay rules aligned with email rules
+  private computeReturnDateByRules(origin: string, destination: string, dep: string): string {
+    const esPt = new Set(['MAD','BCN','AGP','PMI','IBZ','VLC','SVQ','TFS','TFN','LPA','ACE','FUE','BIO','XRY','MAH','LIS','OPO','FAO','FNC','PDL']);
+    const euNa = new Set(['LHR','AMS','FCO','BER','VIE','BUD','CMN','RAK','TUN','ALG','FES','OUD','AGA']);
+    const minStay = esPt.has(destination) ? 5 : (euNa.has(destination) ? 7 : 10);
+    const d = new Date(dep);
+    d.setDate(d.getDate() + minStay);
+    return d.toISOString().split('T')[0];
+  }
+
+  private getIsoRegionForOrigin(origin: string): string {
+    // If needed, map origin to country ISO. For now default to 'FR' for Paris hubs.
+    return ['CDG','ORY','BVA'].includes(origin) ? 'FR' : 'US';
+  }
+
   /**
    * Log API usage
    */
@@ -622,9 +606,9 @@ export class FlightAPIService {
         cabin: options.cabin || 'Economy',
         airline,
         validatingAirline: airline,
-        departureDate: options.departureDate || this.getDefaultDepartureDate(),
-        returnDate: options.returnDate,
-        tripType: options.returnDate ? 'roundtrip' : 'oneway',
+         departureDate: options.departureDate || this.getDefaultDepartureDate(),
+         returnDate: options.returnDate || this.computeReturnDateByRules(route.origin, route.destination, (options.departureDate || this.getDefaultDepartureDate())),
+         tripType: 'roundtrip',
         adults: options.adults || 1,
         children: options.children || 0,
         infants: options.infants || 0,

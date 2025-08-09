@@ -414,10 +414,12 @@ const EnhancedAdminDashboard: React.FC = () => {
     }
   };
 
-  const formatNumber = (num: number, decimals = 0) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toFixed(decimals);
+  const formatNumber = (num: unknown, decimals = 0) => {
+    const n = Number(num ?? 0);
+    if (!isFinite(n)) return '0';
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+    return n.toFixed(decimals);
   };
 
   const formatCurrency = (amount: number) => {
@@ -586,7 +588,7 @@ const EnhancedAdminDashboard: React.FC = () => {
               <MetricCard
                 title="Routes Actives"
                 value={formatNumber(dashboardData.flights.activeRoutes)}
-                subtitle={`${formatNumber(dashboardData.flights.totalScans)} scans`}
+                subtitle={`${formatNumber(dashboardData.flights.totalAlerts || dashboardData.flights.totalScans || 0)} événements`}
                 icon="✈️"
               />
               <MetricCard
@@ -607,14 +609,14 @@ const EnhancedAdminDashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <MetricCard
                 title="Conversion Premium"
-                value={`${dashboardData.users.conversionRate.toFixed(1)}%`}
-                subtitle={`${dashboardData.users.premium} utilisateurs premium`}
+                value={`${formatNumber(dashboardData.users.conversionRate,1)}%`}
+                subtitle={`${formatNumber(dashboardData.users.premium)} utilisateurs premium`}
                 icon="⭐"
               />
               <MetricCard
                 title="Taux de Réussite Scans"
-                value={`${dashboardData.flights.scanSuccessRate.toFixed(1)}%`}
-                subtitle={`${formatNumber(dashboardData.flights.successfulScans)} réussis`}
+                value={`${formatNumber(dashboardData.flights.scanSuccessRate,1)}%`}
+                subtitle={`${formatNumber(dashboardData.flights.successfulScans || 0)} réussis`}
                 icon="🎯"
               />
               <MetricCard

@@ -147,7 +147,10 @@ export class EnhancedEmailService extends EmailService {
         const originalPrice = Math.round(alert.price / (1 - alert.discount / 100));
         const savings = originalPrice - alert.price;
 
-        // Enhanced email content with baggage policy
+        // Build proposed itineraries under constraints (>= J+30, <= 9 months, min stay by region)
+        const proposedItins = this.buildProposedItineraries(alert.origin, alert.destination);
+
+        // Enhanced content (structured)
         const emailContent = this.generateEnhancedAlertEmailContent({
           firstName: user.first_name,
           origin: alert.origin,
@@ -168,6 +171,12 @@ export class EnhancedEmailService extends EmailService {
           baggagePolicy: alert.baggagePolicy
         });
 
+        // Minimal HTML template focusing on essentials + proposed date options
+        const html = this.generateAlertEmailHtml({
+          ...emailContent,
+          proposedItins
+        });
+
         // Simple A/B subject testing
         const variant = Math.random() < 0.5 ? 'A' : 'B';
         const subjectA = `✈️ ${alert.airline} ${alert.origin} → ${alert.destination} : €${alert.price} (-${Math.round(alert.discount)}%)`;
@@ -177,8 +186,8 @@ export class EnhancedEmailService extends EmailService {
         await this.sendTransactionalEmail({
           to: user.email,
           subject,
-          template: 'enhanced-price-alert',
-          data: { ...emailContent, variant }
+          template: html,
+          data: {}
         });
 
         // Track alert sent
@@ -305,6 +314,64 @@ ${this.getAirlineBaggageTip(data.airline)}
       savingsMessage: `Économisez ${formatCurrency(data.savings)} (${Math.round(data.discount)}% de réduction)`,
       priceComparisonText: `Prix normal: ${formatCurrency(data.originalPrice)} | Prix alerte: ${formatCurrency(data.price)}`
     };
+  }
+
+  /**
+   * Generate proposed date options under constraints
+   * - departure >= J+30, <= 9 months
+   * - min stay: Europe/North Africa 7d, otherwise 10d
+   */
+  private buildProposedItineraries(origin: string, destination: string): Array<{ label: string; depart: string; ret: string; days: number }>{
+    const today = new Date();
+    const addDays = (d: Date, n: number) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    const fmt = (d: Date) => d.toLocaleDateString('fr-FR');
+
+    // naive geo check: consider Europe/North Africa short-haul
+    const shortHaul = ['LHR','AMS','FCO','BCN','MAD','LIS','BER','VIE','BUD','CMN','RAK','TUN','ALG','FES','OUD','AGA'].includes(destination);
+    const minStay = shortHaul ? 7 : 10;
+
+    const start1 = addDays(today, 30 + 15); // J+45
+    const start2 = addDays(today, 30 + 40); // J+70
+    const start3 = addDays(today, 30 + 65); // J+95
+
+    const opt = (start: Date, days: number) => ({ label: `Option`, depart: fmt(start), ret: fmt(addDays(start, days)), days });
+    return [
+      opt(start1, minStay),
+      opt(start2, minStay + 2),
+      opt(start3, minStay + 4)
+    ];
+  }
+
+  /** Simple, condensed HTML email rendering */
+  private generateAlertEmailHtml(payload: any): string {
+    const itineraryList = (payload.proposedItins || []).map((i: any) => `<li>${i.depart} → ${i.ret} (${i.days} jours)</li>`).join('');
+    return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Alerte Prix</title>
+    <style>body{margin:0;background:#f6f8fb;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0f172a}
+    .wrap{max-width:680px;margin:0 auto;padding:20px}.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:18px;margin:12px 0}
+    .hdr{background:linear-gradient(135deg,#0f172a,#1e3a8a 55%,#3b82f6);color:#fff;border-radius:12px;padding:18px}.title{margin:0;font-weight:900;font-size:20px}
+    .sub{margin:6px 0 0;opacity:.95}.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #e5e7eb}
+    .row:last-child{border-bottom:0}.k{color:#6b7280;font-size:13px}.v{font-weight:700}.cta{display:inline-block;margin-top:8px;padding:12px 16px;border-radius:10px;background:#3b82f6;color:#fff;text-decoration:none;font-weight:800}
+    .muted{color:#6b7280;font-size:12px;margin-top:8px}</style></head><body>
+    <div class="wrap">
+    <div class="hdr"><h1 class="title">🌍 GlobeGenius — Alerte Prix</h1><p class="sub">${payload.origin} → ${payload.destination} • ${payload.airline}</p></div>
+    <div class="card">
+      <div class="row"><span class="k">Prix</span><span class="v">€${payload.price}</span></div>
+      <div class="row"><span class="k">Réduction</span><span class="v">-${payload.discount}%</span></div>
+      <div class="row"><span class="k">Prix habituel</span><span class="v">€${payload.originalPrice}</span></div>
+      <div class="row"><span class="k">Économies estimées</span><span class="v">€${payload.savings}</span></div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px">📅 Dates proposées</h3>
+      <ul>${itineraryList}</ul>
+      <a class="cta" href="${payload.searchLink}" target="_blank" rel="noopener">Voir & réserver</a>
+      <p class="muted">Départs ≥ J+30, ≤ 9 mois • Europe/Nord Afrique: 7 jours min • Long‑courrier: 10 jours min.</p>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px">🧳 Bagages (${payload.airline})</h3>
+      <pre style="white-space:pre-line;margin:0">${payload.baggagePolicyText}</pre>
+    </div>
+    <p class="muted">Gérez vos préférences: http://localhost:3000/dashboard • Support: contact@globegenius.app</p>
+    </div></body></html>`;
   }
 
   /**

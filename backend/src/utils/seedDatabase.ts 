@@ -1,0 +1,152 @@
+// ===== backend/src/utils/seedDatabase.ts =====
+import mongoose from 'mongoose';
+import { connectDB } from '../config/database';
+import { Route } from '../models/Route';
+import { User } from '../models/User';
+import { logger } from '../app';
+
+const initialRoutes = [
+  // Tier 1 - Priority routes from Paris
+  { origin: 'CDG', destination: 'JFK', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'BKK', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'BCN', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'ROM', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'LON', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'MAD', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'AMS', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'DXB', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'IST', tier: 1, scanFrequencyHours: 4 },
+  { origin: 'CDG', destination: 'LIS', tier: 1, scanFrequencyHours: 4 },
+  
+  // Tier 2 - Secondary routes
+  { origin: 'CDG', destination: 'LAX', tier: 2, scanFrequencyHours: 6 },
+  { origin: 'CDG', destination: 'MIA', tier: 2, scanFrequencyHours: 6 },
+  { origin: 'CDG', destination: 'CAN', tier: 2, scanFrequencyHours: 6 },
+  { origin: 'NCE', destination: 'LON', tier: 2, scanFrequencyHours: 6 },
+  { origin: 'LYS', destination: 'BCN', tier: 2, scanFrequencyHours: 6 },
+  
+  // Tier 3 - Seasonal routes
+  { origin: 'CDG', destination: 'MLE', tier: 3, scanFrequencyHours: 12 },
+  { origin: 'CDG', destination: 'CMB', tier: 3, scanFrequencyHours: 12 },
+  { origin: 'MRS', destination: 'MAR', tier: 3, scanFrequencyHours: 12 }
+];
+
+async function seedDatabase() {
+  try {
+    await connectDB();
+    
+    // Clear existing routes
+    await Route.deleteMany({});
+    
+    // Insert initial routes
+    for (const route of initialRoutes) {
+      await Route.create(route);
+      logger.info(`Created route: ${route.origin} → ${route.destination}`);
+    }
+    
+    // Create admin user
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@globegenius.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    const existingAdmin = await User.findOne({ email: adminEmail });
+    if (!existingAdmin) {
+      await User.create({
+        email: adminEmail,
+        password: adminPassword,
+        firstName: 'Admin',
+        subscriptionType: 'premium'
+      });
+      logger.info(`Admin user created: ${adminEmail}`);
+    }
+    
+    logger.info('✅ Database seeded successfully');
+    process.exit(0);
+  } catch (error) {
+    logger.error('Seed error:', error);
+    process.exit(1);
+  }
+}
+
+// Run if called directly
+if (require.main === module) {
+  seedDatabase();
+}
+
+// ===== Docker Compose Updated =====
+// docker-compose.yml
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: globegenius
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  backend:
+    build: ./backend
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - NODE_ENV=development
+      - MONGODB_LOCAL_URI=mongodb://admin:${MONGO_PASSWORD}@mongodb:27017/globegenius?authSource=admin
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - app-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    networks:
+      - app-network
+
+  ml-service:
+    build: ./ml-service
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-service:/app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:

@@ -595,9 +595,9 @@ export function calculateRouteStrategy() {
     },
     geographicCoverage,
     adaptiveStrategy: {
-      totalBudget: 30000,
+      totalBudget: Number(process.env.BUDGET_MONTHLY_CALLS || 30000),
       usedBudget: totalCallsPerMonth,
-      remainingBudget: 30000 - totalCallsPerMonth,
+      remainingBudget: Number(process.env.BUDGET_MONTHLY_CALLS || 30000) - totalCallsPerMonth,
       coverageScore: geographicCoverage.score,
       recommendations: generateAdaptiveRecommendations(geographicCoverage)
     }

@@ -266,8 +266,8 @@ export class FlightAPIService {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
 
-      // Return fallback realistic data instead of empty array
-      return this.generateRealisticFallbackFlights(route, options);
+      // No fallback: strictly return empty results on failure
+      return [];
     }
   }
 

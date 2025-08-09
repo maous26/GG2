@@ -15,6 +15,7 @@ import securityAudit from '../services/securityAudit.service';
 import { KPIService } from '../services/kpi.service';
 import { FlightAPIService } from '../services/flightApiService';
 import Joi from 'joi';
+import ApiBudgetService from '../services/apiBudget.service';
 
 const router = express.Router();
 const mlMaturityService = new MLMaturityService();
@@ -1268,7 +1269,7 @@ router.post('/flightapi/live-search', asyncHandler(async (req: Request, res: Res
           avg: Math.round(flights.reduce((sum, f) => sum + f.price, 0) / flights.length)
         } : null
       },
-      apiStatus: flights.length > 0 ? 'success' : 'fallback'
+      apiStatus: flights.length > 0 ? 'success' : 'error'
     });
 
   } catch (error) {
@@ -1409,5 +1410,22 @@ router.get('/flightapi/scanning-status', asyncHandler(async (req: Request, res: 
     res.status(500).json({ message: 'Error fetching scanning status' });
   }
 }));
+
+// Admin: Get & set monthly API calls budget
+router.get('/kpis/budget', asyncHandler(async (req: Request, res: Response) => {
+  const cfg = await ApiBudgetService.getConfig();
+  res.json({ monthlyCalls: cfg.monthlyCalls });
+}));
+
+router.put('/kpis/budget', 
+  validate({
+    body: Joi.object({ monthlyCalls: Joi.number().integer().min(1000).max(2000000).required() }).unknown(false)
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { monthlyCalls } = req.body as { monthlyCalls: number };
+    await ApiBudgetService.setMonthlyCalls(monthlyCalls);
+    res.json({ success: true, monthlyCalls });
+  })
+);
 
 export default router;

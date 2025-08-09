@@ -167,11 +167,21 @@ export class StrategicFlightScanner {
       let dealsFoundInScan = 0;
       let apiCallsInScan = 0;
 
+      // Budget-aware scan: estimate calls and optionally throttle by env BUDGET_MONTHLY_CALLS
+      const monthlyBudget = Number(process.env.BUDGET_MONTHLY_CALLS || 30000);
+      const dailyBudget = Math.floor(monthlyBudget / 30);
+      let remainingDaily = dailyBudget; // simple in-memory counter per run
+
       for (const strategicRoute of routesToScan) {
         try {
+          if (remainingDaily - strategicRoute.estimatedCallsPerScan < 0) {
+            console.log(`⛔ Budget daily reached, skipping remaining routes for Tier ${tier}`);
+            break;
+          }
           // Rechercher des bonnes affaires sur cette route
           const deals = await this.flightAPIService.detectDeals(strategicRoute);
           apiCallsInScan += strategicRoute.estimatedCallsPerScan;
+          remainingDaily -= strategicRoute.estimatedCallsPerScan;
 
           if (deals.length > 0) {
             console.log(`💰 Found ${deals.length} deals on ${strategicRoute.origin}-${strategicRoute.destination}`);

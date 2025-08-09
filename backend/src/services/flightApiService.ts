@@ -243,9 +243,9 @@ export class FlightAPIService {
       // Convert FlightAPI response to our internal format
       const flights = this.convertResponseToFlightPrices(response, options, route);
 
-      // Log API usage
+      // Log API usage including route for per-route analytics
       await this.logApiUsage({
-        endpoint: returnDate ? '/roundtrip' : '/oneway',
+        endpoint: `${returnDate ? '/roundtrip' : '/oneway'}/${route.origin}-${route.destination}`,
         method: 'GET',
         responseTime: Date.now() - startTime,
         success: true,
@@ -259,7 +259,7 @@ export class FlightAPIService {
       
       // Log failed API usage
       await this.logApiUsage({
-        endpoint: options.returnDate ? '/roundtrip' : '/oneway',
+        endpoint: `${options.returnDate ? '/roundtrip' : '/oneway'}/${route.origin}-${route.destination}`,
         method: 'GET',
         responseTime: Date.now() - startTime,
         success: false,
@@ -414,8 +414,10 @@ export class FlightAPIService {
         }
 
         const actualDiscount = Math.max(discountFromMedian, discountFromAvg);
-        
-        if (actualDiscount >= adaptiveThreshold && flight.price > 0) {
+        // Multi-source quick validation (placeholder): require price > 0 and discount >> 0
+        const passesBasicComparators = flight.price > 0 && actualDiscount > 0;
+
+        if (passesBasicComparators && actualDiscount >= adaptiveThreshold) {
           deals.push({
             origin: route.origin,
             destination: route.destination,

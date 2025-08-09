@@ -26,8 +26,7 @@ export interface RoutePerformanceScore {
 }
 
 export class IntelligentPricingService {
-  private static readonly MAX_MONTHLY_CALLS = 30000; // Strategic limit
-  private static readonly DAILY_CALL_LIMIT = 1000;
+  // Limits now provided by ApiBudgetService; constants removed
   
   /**
    * Core Strategic Function: Replace Fixed 30% with Adaptive Thresholds
@@ -108,11 +107,11 @@ export class IntelligentPricingService {
       // Level 1: Statistical Validation (Free)
       const statisticalScore = this.calculateStatisticalValidation(currentPrice, historicalData);
       
-      // Level 2: Predictive Validation (Free - using cached predictions)
-      const predictiveScore = await this.calculatePredictiveValidation(origin, destination, currentPrice);
+      // Level 2: Predictive Validation (with cache)
+      const predictiveScore = await this.cachedPredictiveValidation(origin, destination, currentPrice);
       
       // Level 3: Contextual AI Validation (Paid - strategic budget)
-      const contextualScore = await this.calculateContextualValidation(
+      const contextualScore = await this.cachedContextualValidation(
         origin, 
         destination, 
         currentPrice, 
@@ -180,7 +179,10 @@ export class IntelligentPricingService {
   public static async optimizeRoutePerformance(): Promise<void> {
     try {
       const routes = await StrategicRoute.find({ isActive: true });
-      const totalBudget = this.DAILY_CALL_LIMIT;
+      // Use ApiBudgetService daily cap
+      const { ApiBudgetService } = await import('./apiBudget.service');
+      const cfg = await ApiBudgetService.getConfig();
+      const totalBudget = Math.floor(cfg.monthlyCalls / 30);
       let allocatedCalls = 0;
       
       // Calculate performance scores for all routes
@@ -316,6 +318,37 @@ export class IntelligentPricingService {
     } catch (error) {
       logger.error('Error in predictive validation:', error);
       return 50;
+    }
+  }
+
+  // Cached wrappers (1h TTL)
+  private static async cachedPredictiveValidation(origin: string, destination: string, currentPrice: number): Promise<number> {
+    try {
+      const { getRedis } = await import('../config/redis');
+      const redis = getRedis();
+      const key = `cache:predictive:${origin}:${destination}`;
+      const hit = await redis.get(key);
+      if (hit) return Number(hit);
+      const score = await this.calculatePredictiveValidation(origin, destination, currentPrice);
+      await redis.setex(key, 3600, String(score));
+      return score;
+    } catch {
+      return this.calculatePredictiveValidation(origin, destination, currentPrice);
+    }
+  }
+
+  private static async cachedContextualValidation(origin: string, destination: string, currentPrice: number, historicalData: number[]): Promise<number> {
+    try {
+      const { getRedis } = await import('../config/redis');
+      const redis = getRedis();
+      const key = `cache:contextual:${origin}:${destination}`;
+      const hit = await redis.get(key);
+      if (hit) return Number(hit);
+      const score = await this.calculateContextualValidation(origin, destination, currentPrice, historicalData);
+      await redis.setex(key, 3600, String(score));
+      return score;
+    } catch {
+      return this.calculateContextualValidation(origin, destination, currentPrice, historicalData);
     }
   }
   

@@ -168,15 +168,22 @@ export class StrategicFlightScanner {
       let apiCallsInScan = 0;
 
       // Budget-aware scan: estimate calls and optionally throttle by env BUDGET_MONTHLY_CALLS
-      const monthlyBudget = Number(process.env.BUDGET_MONTHLY_CALLS || 30000);
-      const dailyBudget = Math.floor(monthlyBudget / 30);
-      let remainingDaily = dailyBudget; // simple in-memory counter per run
+      // Persistent budget reservation via ApiBudgetService
+      const { ApiBudgetService } = await import('../services/apiBudget.service');
+      const cfg = await ApiBudgetService.getConfig();
+      const dailyBudget = Math.floor(cfg.monthlyCalls / 30);
+      let remainingDaily = dailyBudget - (await ApiBudgetService.getCounters()).day;
 
       for (const strategicRoute of routesToScan) {
         try {
           if (remainingDaily - strategicRoute.estimatedCallsPerScan < 0) {
             console.log(`⛔ Budget daily reached, skipping remaining routes for Tier ${tier}`);
             break;
+          }
+          const reserved = await ApiBudgetService.reserveCalls(strategicRoute.estimatedCallsPerScan);
+          if (!reserved) {
+            console.log('⏭️ Unable to reserve budget units, skipping this route for now');
+            continue;
           }
           // Rechercher des bonnes affaires sur cette route
           const deals = await this.flightAPIService.detectDeals(strategicRoute);
@@ -207,6 +214,10 @@ export class StrategicFlightScanner {
 
         } catch (error) {
           console.error(`❌ Error scanning route ${strategicRoute.origin}-${strategicRoute.destination}:`, error);
+          try {
+            const { ApiBudgetService } = await import('../services/apiBudget.service');
+            await ApiBudgetService.releaseCalls(strategicRoute.estimatedCallsPerScan);
+          } catch {}
         }
       }
 

@@ -362,6 +362,19 @@ export const STRATEGIC_ROUTES: StrategicRoute[] = [
     geographicRegion: 'americas',
     seasonalBoost: true
   },
+  // Été (exemples)
+  { origin: 'CDG', destination: 'ATH', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Grèce été', priority: 'medium', expectedDiscountRange: '25-40%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe', seasonalBoost: true },
+  { origin: 'CDG', destination: 'PMI', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Majorque familles', priority: 'medium', expectedDiscountRange: '25-45%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe', seasonalBoost: true },
+  { origin: 'CDG', destination: 'IBZ', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Ibiza clubs', priority: 'medium', expectedDiscountRange: '20-40%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe', seasonalBoost: true },
+  { origin: 'CDG', destination: 'SPU', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Split Croatie', priority: 'medium', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe', seasonalBoost: true },
+  // Hiver (exemples)
+  { origin: 'CDG', destination: 'MLE', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Maldives luxe', priority: 'medium', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'asia', seasonalBoost: true },
+  { origin: 'CDG', destination: 'PUJ', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Punta Cana', priority: 'medium', expectedDiscountRange: '25-40%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'americas', seasonalBoost: true },
+  { origin: 'CDG', destination: 'DPS', tier: 2, scanFrequencyHours: 6, estimatedCallsPerScan: 3, remarks: 'Bali', priority: 'medium', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'asia', seasonalBoost: true },
+  // Intersaison (exemples)
+  { origin: 'CDG', destination: 'LIS', tier: 3, scanFrequencyHours: 12, estimatedCallsPerScan: 2, remarks: 'Lisbonne', priority: 'low', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe' },
+  { origin: 'CDG', destination: 'VIE', tier: 3, scanFrequencyHours: 12, estimatedCallsPerScan: 2, remarks: 'Vienne', priority: 'low', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe' },
+  { origin: 'CDG', destination: 'BUD', tier: 3, scanFrequencyHours: 12, estimatedCallsPerScan: 2, remarks: 'Budapest', priority: 'low', expectedDiscountRange: '20-35%', targetUserTypes: ['premium','enterprise'], geographicRegion: 'europe' },
   {
     origin: 'CDG',
     destination: 'MCO',

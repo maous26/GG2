@@ -685,7 +685,8 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
     avgResponseTime,
     systemUptime,
     apiCallsSuccess,
-    errorRate
+    errorRate,
+    trends
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ lastLogin: { $gte: startDate } }),
@@ -696,7 +697,8 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
     KPIService.calculateAvgResponseTime(startDate),
     KPIService.calculateSystemUptime(startDate),
     ApiCall.countDocuments({ createdAt: { $gte: startDate }, status: { $lt: 400 } }),
-    KPIService.calculateErrorRate(startDate)
+    KPIService.calculateErrorRate(startDate),
+    KPIService.getDailyMetricsTrends(startDate)
   ]);
 
   // No derived heavy ratios; keep simple
@@ -724,7 +726,13 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
       apiCallsSuccess,
       errorRate,
       availability: systemUptime > 99 ? 'excellent' : systemUptime > 95 ? 'good' : 'needs-attention'
-    }
+    },
+    trends: Array.isArray(trends) ? trends.map((t: any) => ({
+      date: new Date(t.date).toISOString(),
+      requests: t.requests || 0,
+      errors: t.errors || 0,
+      successRate: Math.round(t.successRate || 0)
+    })) : []
   });
 }));
 

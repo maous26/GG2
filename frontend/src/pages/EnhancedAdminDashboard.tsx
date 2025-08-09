@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FinancialTab, FlightTab } from '../components/KPITabs';
-import AdaptivePricingDashboard from '../components/AdaptivePricingDashboard';
+import { FlightTab } from '../components/KPITabs';
 import FlightAPIMonitor from '../components/FlightAPIMonitor';
 
 // User Management Interfaces
@@ -160,6 +159,7 @@ const EnhancedAdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState('7d');
   const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null);
+  const buildLabel = React.useMemo(() => `build ${new Date().toLocaleString('fr-FR')}`,[/* once per mount */]);
 
   // KPI Data States
   const [dashboardData, setDashboardData] = useState<KPIDashboardData | null>(null);
@@ -478,7 +478,7 @@ const EnhancedAdminDashboard: React.FC = () => {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">🎯 KPI Dashboard Admin</h1>
+            <h1 className="text-2xl font-bold text-gray-900">🎯 KPI Dashboard Admin v2</h1>
             <p className="text-gray-600">Bienvenue, {user.email}</p>
           </div>
           <div className="flex items-center space-x-4">
@@ -496,6 +496,7 @@ const EnhancedAdminDashboard: React.FC = () => {
             </select>
             
             {/* Refresh Button */}
+            <span className="text-xs text-gray-500 mr-2">{buildLabel}</span>
             <button 
               onClick={fetchAllData}
               className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 transition-colors"
@@ -514,16 +515,13 @@ const EnhancedAdminDashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Navigation Tabs */}
+       {/* Navigation Tabs (rationalized) */}
       <nav className="bg-white border-b border-gray-200 px-6">
         <div className="flex space-x-8">
           {[
             { id: 'overview', name: 'Vue d\'ensemble', icon: '📊' },
-            { id: 'adaptive', name: 'Prix Adaptatif IA', icon: '🧠' },
             { id: 'users', name: 'Utilisateurs', icon: '👥' },
-            { id: 'flights', name: 'Vols & Routes', icon: '✈️' },
-            { id: 'flightapi', name: 'FlightAPI Monitor', icon: '🛫' },
-            { id: 'financial', name: 'Finances', icon: '💰' },
+            { id: 'flights', name: 'Vols & FlightAPI', icon: '✈️' },
             { id: 'system', name: 'Système', icon: '🖥️' },
             { id: 'realtime', name: 'Temps Réel', icon: '⚡' }
           ].map((tab) => (
@@ -576,7 +574,7 @@ const EnhancedAdminDashboard: React.FC = () => {
               </div>
             )}
 
-            {/* Main KPI Grid */}
+            {/* Main KPI Grid (essential KPIs only) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <MetricCard
                 title="Utilisateurs Total"
@@ -588,14 +586,8 @@ const EnhancedAdminDashboard: React.FC = () => {
               <MetricCard
                 title="Routes Actives"
                 value={formatNumber(dashboardData.flights.activeRoutes)}
-                subtitle={`${formatNumber(dashboardData.flights.totalAlerts || dashboardData.flights.totalScans || 0)} événements`}
+                subtitle={`${formatNumber(dashboardData.flights.totalScans || 0)} scans`}
                 icon="✈️"
-              />
-              <MetricCard
-                title="Économies Générées"
-                value={formatCurrency(dashboardData.financial.totalSavings)}
-                subtitle="Pour les utilisateurs"
-                icon="💰"
               />
               <MetricCard
                 title="Temps de Réponse"
@@ -603,9 +595,15 @@ const EnhancedAdminDashboard: React.FC = () => {
                 status={dashboardData.performance.availability}
                 icon="⚡"
               />
+              <MetricCard
+                title="Taux de Réussite Scans"
+                value={`${formatNumber(dashboardData.flights.scanSuccessRate,1)}%`}
+                subtitle={`${formatNumber(dashboardData.flights.successfulScans || 0)} réussis`}
+                icon="🎯"
+              />
             </div>
 
-            {/* Conversion & Performance Metrics */}
+            {/* Conversion & Maturité ML */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <MetricCard
                 title="Conversion Premium"
@@ -614,18 +612,12 @@ const EnhancedAdminDashboard: React.FC = () => {
                 icon="⭐"
               />
               <MetricCard
-                title="Taux de Réussite Scans"
-                value={`${formatNumber(dashboardData.flights.scanSuccessRate,1)}%`}
-                subtitle={`${formatNumber(dashboardData.flights.successfulScans || 0)} réussis`}
-                icon="🎯"
-              />
-              <MetricCard
-                title="Score IA"
-                value={`${dashboardData.ai.maturityScore}/10`}
-                subtitle={`Risque: ${dashboardData.ai.riskLevel}`}
-                status={dashboardData.ai.readyForAutonomy ? 'excellent' : 'needs-attention'}
+                title="Maturité ML"
+                value={`${formatNumber(dashboardData.ai.maturityScore,1)}/10`}
+                subtitle={`Précision: ${formatNumber(((dashboardData.ai.predictionAccuracy ?? 0) <= 1 ? (dashboardData.ai.predictionAccuracy ?? 0) * 100 : (dashboardData.ai.predictionAccuracy ?? 0)),1)}%`}
                 icon="🤖"
               />
+              <div className="hidden md:block" />
             </div>
 
             {/* Trends Chart */}
@@ -1024,24 +1016,15 @@ const EnhancedAdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Adaptive Pricing Tab */}
-        {activeTab === 'adaptive' && (
-          <AdaptivePricingDashboard />
-        )}
-
-        {/* Financial Tab */}
-        {activeTab === 'financial' && (
-          <FinancialTab timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
-        )}
-
-        {/* Flights Tab */}
+        {/* Flights & FlightAPI Tab (merged) */}
         {activeTab === 'flights' && (
-          <FlightTab timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
-        )}
-
-        {/* FlightAPI Monitor Tab */}
-        {activeTab === 'flightapi' && (
-          <FlightAPIMonitor />
+          <div className="space-y-6">
+            <FlightTab timeRange={timeRange} onTimeRangeChange={handleTimeRangeChange} />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold mb-4">🛫 FlightAPI Monitor</h3>
+              <FlightAPIMonitor />
+            </div>
+          </div>
         )}
       </main>
 

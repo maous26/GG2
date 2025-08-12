@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6-jammy
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: globegenius123
+      MONGO_INITDB_DATABASE: globegenius
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly no
+
+  backend:
+    build: ./backend
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      # Use .env file for secrets in development; these are placeholders only
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://admin:globegenius123@mongodb:27017/globegenius?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-jwt-secret-key
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FLIGHTAPI_KEY=68931dee42373940c8aa9d9b
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+
+  ml-service:
+    build: ./ml-service
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-service:/app
+
+volumes:
+  mongodb_data:
+  redis_data:

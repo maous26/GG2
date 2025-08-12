@@ -75,7 +75,9 @@ dist
 
 # Gatsby files
 .cache/
+# In prod build we need CRA public/index.html; keep assets ignored but allow index.html
 public
+!frontend/public/index.html
 
 # Storybook build outputs
 .out

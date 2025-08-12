@@ -117,6 +117,13 @@ export class StrategicFlightScanner {
       await this.scanTier(1);
     });
 
+    // TIER 1 BOOST - Mardi entre 02:00 et 10:00 (heures impaires 03,05,07,09) → fréquence horaire additionnelle
+    // Evite les doublons avec le plan /2h existant (02,04,06,08,10) grâce au créneau 3-9/2
+    cron.schedule('0 3-9/2 * * 2', async () => {
+      console.log('🚀 Tier 1 BOOST (Tuesday hourly 03-09)');
+      await this.scanTier(1);
+    });
+
     // TIER 2 - Toutes les 4 heures (routes régionales optimisées) ET 6 heures (routes standards)
     cron.schedule('0 */4 * * *', async () => {
       console.log('🥈 Starting Tier 2 scan (every 4h)');

@@ -686,7 +686,8 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
     systemUptime,
     apiCallsSuccess,
     errorRate,
-    trends
+    trends,
+    scanEfficiency
   ] = await Promise.all([
     User.countDocuments(),
     User.countDocuments({ lastLogin: { $gte: startDate } }),
@@ -698,7 +699,8 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
     KPIService.calculateSystemUptime(startDate),
     ApiCall.countDocuments({ createdAt: { $gte: startDate }, status: { $lt: 400 } }),
     KPIService.calculateErrorRate(startDate),
-    KPIService.getDailyMetricsTrends(startDate)
+    KPIService.getDailyMetricsTrends(startDate),
+    KPIService.getScanEfficiencyMetrics(startDate)
   ]);
 
   // No derived heavy ratios; keep simple
@@ -718,7 +720,12 @@ router.get('/kpis/dashboard', asyncHandler(async (req: Request, res: Response) =
       totalRoutes,
       activeRoutes,
       alerts24h: totalAlerts,
-      avgAlertsPerActiveRoute: activeRoutes > 0 ? totalAlerts / activeRoutes : 0
+      avgAlertsPerActiveRoute: activeRoutes > 0 ? totalAlerts / activeRoutes : 0,
+      // Provide scanning metrics directly for the overview card
+      totalScans: scanEfficiency.totalScans || 0,
+      successfulScans: scanEfficiency.successfulScans || 0,
+      scanSuccessRate: scanEfficiency.successRate || 0,
+      scanAvgResponseTime: scanEfficiency.avgResponseTime || 0
     },
     performance: {
       avgResponseTime,
@@ -1281,56 +1288,68 @@ router.get('/flightapi/trends', asyncHandler(async (req: Request, res: Response)
 // Get real-time route scanning status
 router.get('/flightapi/scanning-status', asyncHandler(async (req: Request, res: Response) => {
   try {
-    // Get all strategic routes with their scanning status
-    const routes = await StrategicRoute.find({ isActive: true })
+    // Use canonical Route collection to reflect actual active routes
+    const routes = await Route.find({ isActive: true })
       .sort({ tier: 1, origin: 1 })
-      .limit(50);
+      .limit(50)
+      .lean();
 
-    // Get recent API calls for each route
+    // Compute recent status for each route using ApiCall logs (last 2h)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const routeStatus = await Promise.all(
-      routes.map(async (route) => {
+      routes.map(async (route: any) => {
         const recentCalls = await ApiCall.find({
           provider: 'flightapi',
           endpoint: { $regex: `${route.origin}.*${route.destination}` },
-          timestamp: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } // Last 2 hours
-        }).sort({ timestamp: -1 }).limit(5);
+          $or: [
+            { timestamp: { $gte: twoHoursAgo } },
+            { createdAt: { $gte: twoHoursAgo } }
+          ]
+        }).sort({ timestamp: -1, createdAt: -1 }).limit(5);
 
         const recentAlerts = await Alert.countDocuments({
           origin: route.origin,
           destination: route.destination,
-          detectedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+          detectedAt: { $gte: oneDayAgo }
         });
 
         const lastCall = recentCalls[0];
-        const avgResponseTime = recentCalls.length > 0 ?
-          recentCalls.reduce((sum, call) => sum + call.responseTime, 0) / recentCalls.length : 0;
+        const avgResponseTime = recentCalls.length > 0
+          ? recentCalls.reduce((sum, call) => sum + (call.responseTime || 0), 0) / recentCalls.length
+          : 0;
+
+        const successes = recentCalls.filter(c => c.success === true || (typeof (c as any).status === 'number' && (c as any).status < 400)).length;
+        const status: 'active' | 'error' = successes > 0 ? 'active' : 'error';
 
         return {
           route: `${route.origin} → ${route.destination}`,
           tier: route.tier,
           scanFrequency: `${route.scanFrequencyHours}h`,
-          lastScanned: lastCall?.timestamp || null,
-          status: lastCall?.success ? 'active' : 'error',
-          avgResponseTime: Math.round(avgResponseTime),
-          recentAlerts: recentAlerts,
+          lastScanned: (lastCall as any)?.timestamp || (lastCall as any)?.createdAt || route.lastScan || null,
+          status,
+          avgResponseTime: Math.round(avgResponseTime) || null,
+          recentAlerts,
           callsLast2h: recentCalls.length,
-          successRate: recentCalls.length > 0 ?
-            Math.round((recentCalls.filter(c => c.success).length / recentCalls.length) * 100) : 0
+          successRate: recentCalls.length > 0 ? Math.round((successes / recentCalls.length) * 100) : 0
         };
       })
     );
 
+    const avgResp = routeStatus.length > 0
+      ? Math.round(routeStatus.reduce((sum, r) => sum + (r.avgResponseTime || 0), 0) / Math.max(1, routeStatus.length))
+      : null;
+
     res.json({
       timestamp: new Date().toISOString(),
       totalActiveRoutes: routes.length,
-      routeStatus: routeStatus,
+      routeStatus,
       summary: {
         activeRoutes: routeStatus.filter(r => r.status === 'active').length,
         errorRoutes: routeStatus.filter(r => r.status === 'error').length,
-        avgResponseTime: Math.round(
-          routeStatus.reduce((sum, r) => sum + r.avgResponseTime, 0) / routeStatus.length
-        ),
-        totalAlertsLast24h: routeStatus.reduce((sum, r) => sum + r.recentAlerts, 0)
+        avgResponseTime: avgResp,
+        totalAlertsLast24h: routeStatus.reduce((sum, r) => sum + (r.recentAlerts || 0), 0)
       }
     });
 

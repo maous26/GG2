@@ -36,124 +36,118 @@ const LandingPage: React.FC = () => {
   const styles = {
     // Global
     container: {
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
       lineHeight: '1.6',
+      backgroundColor: '#f8fafc',
+      color: '#1f2937'
     },
 
     // Hero Section with Urgency
     hero: {
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 30%, #3b82f6 70%, #6366f1 100%)',
+      minHeight: '90vh',
+      background: 'linear-gradient(180deg, #ffffff 0%, #f5f7fb 100%)',
       display: 'flex',
       flexDirection: 'column' as const,
       alignItems: 'center',
       justifyContent: 'center',
-      color: 'white',
-      padding: '20px',
+      color: '#111827',
+      padding: '24px',
       textAlign: 'center' as const,
-      position: 'relative' as const
+      position: 'relative' as const,
+      borderBottom: '1px solid #e5e7eb'
     },
 
     // Logo integration
     logo: {
-      width: '80px',
-      height: '80px',
+      width: '72px',
+      height: '72px',
       marginBottom: '1rem',
-      filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+      filter: 'none'
     },
 
     // Urgency banner
     urgencyBanner: {
       position: 'absolute' as const,
-      top: '0',
-      left: '0',
-      right: '0',
-      backgroundColor: '#ef4444',
-      color: 'white',
-      padding: '12px',
+      top: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#eef2f7',
+      color: '#475569',
+      padding: '10px 12px',
       textAlign: 'center' as const,
-      fontWeight: 'bold',
-      animation: 'pulse 2s infinite',
+      fontWeight: 500,
       zIndex: 10,
     },
 
     heroTitle: {
-      fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
-      fontWeight: '900',
-      marginBottom: '1rem',
-      lineHeight: '1.1',
-      textShadow: '0 4px 12px rgba(0,0,0,0.4)',
-      background: 'linear-gradient(45deg, #fbbf24, #f59e0b, #ff6b35)',
-      backgroundClip: 'text',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
+      fontSize: 'clamp(2.4rem, 5.5vw, 4rem)',
+      fontWeight: 800,
+      marginBottom: '0.75rem',
+      lineHeight: '1.15',
+      color: '#0f172a'
     },
 
     heroSubtitle: {
-      fontSize: 'clamp(1.3rem, 3vw, 1.8rem)',
-      marginBottom: '1.5rem',
-      fontWeight: '600',
-      color: '#fbbf24',
-      textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+      fontSize: 'clamp(1.2rem, 3vw, 1.6rem)',
+      marginBottom: '1rem',
+      fontWeight: 600,
+      color: '#334155'
     },
 
     heroDescription: {
-      fontSize: 'clamp(1.1rem, 2.5vw, 1.4rem)',
-      marginBottom: '2rem',
-      opacity: 0.95,
-      maxWidth: '700px',
-      lineHeight: '1.5',
+      fontSize: 'clamp(1.05rem, 2.2vw, 1.3rem)',
+      marginBottom: '1.5rem',
+      color: '#475569',
+      maxWidth: '720px',
+      lineHeight: '1.6'
     },
 
     // Social Proof
     socialProof: {
-      backgroundColor: 'rgba(255,255,255,0.1)',
-      padding: '1rem 2rem',
-      borderRadius: '12px',
-      marginBottom: '2rem',
-      backdropFilter: 'blur(10px)',
-      border: '1px solid rgba(255,255,255,0.2)',
+      backgroundColor: '#ffffff',
+      padding: '0.75rem 1rem',
+      borderRadius: '10px',
+      marginBottom: '1.25rem',
+      border: '1px solid #e5e7eb',
+      color: '#475569'
     },
 
     // CTA Buttons
     premiumCta: {
-      padding: '20px 40px',
-      fontSize: '1.4rem',
-      fontWeight: 'bold',
-      background: 'linear-gradient(45deg, #ff6b35, #fbbf24)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '50px',
+      padding: '14px 28px',
+      fontSize: '1.05rem',
+      fontWeight: 600,
+      background: '#2563eb',
+      color: '#ffffff',
+      border: '1px solid #1d4ed8',
+      borderRadius: '10px',
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      boxShadow: '0 8px 30px rgba(255, 107, 53, 0.4)',
-      textTransform: 'uppercase' as const,
-      letterSpacing: '1px',
-      position: 'relative' as const,
-      overflow: 'hidden' as const,
-      marginBottom: '1rem',
+      transition: 'background-color 0.2s ease, box-shadow 0.2s ease',
+      boxShadow: '0 8px 20px rgba(37, 99, 235, 0.15)',
+      letterSpacing: '0.2px',
+      marginBottom: '0.75rem'
     },
 
     freeCta: {
-      padding: '16px 32px',
-      fontSize: '1.1rem',
-      fontWeight: '600',
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      color: 'white',
-      border: '2px solid rgba(255,255,255,0.3)',
-      borderRadius: '12px',
+      padding: '12px 24px',
+      fontSize: '1rem',
+      fontWeight: 500,
+      backgroundColor: '#ffffff',
+      color: '#1f2937',
+      border: '1px solid #cbd5e1',
+      borderRadius: '10px',
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      backdropFilter: 'blur(10px)',
+      transition: 'background-color 0.2s ease, border-color 0.2s ease'
     },
 
     // Premium Offer Section
     premiumOffer: {
-      backgroundColor: '#0f172a',
-      color: 'white',
-      padding: '60px 20px',
+      backgroundColor: '#ffffff',
+      color: '#1f2937',
+      padding: '56px 20px',
       textAlign: 'center' as const,
       position: 'relative' as const,
+      borderTop: '1px solid #e5e7eb'
     },
 
     // Comparison table
@@ -256,8 +250,8 @@ const LandingPage: React.FC = () => {
   return (
     <div style={styles.container}>
       {/* Premium Benefits Banner */}
-      <div style={styles.urgencyBanner}>
-        🌟 GlobeGenius Premium - Économisez des milliers d'euros sur vos voyages !
+      <div style={{...styles.urgencyBanner, backgroundColor:'#0b1020'}}>
+        GlobeGenius — Alertes tarifaires et prévisions de prix
       </div>
 
       {/* Admin Button */}
@@ -315,16 +309,14 @@ const LandingPage: React.FC = () => {
           </defs>
         </svg>
 
-        <h1 style={styles.heroTitle}>
-          GlobeGenius
-        </h1>
+        <h1 style={styles.heroTitle}>GlobeGenius</h1>
         
         <h2 style={styles.heroSubtitle}>
-          L'IA qui vous fait économiser jusqu'à 5000€ par an sur vos voyages
+          Ne cherchez plus les vols les moins chers, ce sont eux qui vous trouvent
         </h2>
 
         <p style={styles.heroDescription}>
-          Découverte exclusive des erreurs de prix • Prédictions IA • Alertes instantanées • Plus de 50 000 voyageurs économisent déjà des milliers d'euros
+          Alertes tarifaires intelligentes • Prévisions de prix basées sur l'IA • Optimisation des économies pour les voyageurs exigeants
         </p>
 
         <div style={styles.socialProof}>

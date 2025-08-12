@@ -538,9 +538,22 @@ export class KPIService {
   static async calculateAvgResponseTime(startDate: Date): Promise<number> {
     try {
       const result = await ApiCall.aggregate([
+        // Coalesce date and normalize status
+        {
+          $addFields: {
+            coalesceDate: { $ifNull: ['$createdAt', '$timestamp'] },
+            statusNum: {
+              $cond: [
+                { $isNumber: '$status' },
+                '$status',
+                { $convert: { input: '$status', to: 'int', onError: 0, onNull: 0 } }
+              ]
+            }
+          }
+        },
         {
           $match: { 
-            createdAt: { $gte: startDate },
+            coalesceDate: { $gte: startDate },
             responseTime: { $exists: true }
           }
         },
@@ -560,11 +573,12 @@ export class KPIService {
 
   static async calculateSystemUptime(startDate: Date): Promise<number> {
     try {
-      // Simplified uptime calculation based on successful API calls
-      const totalCalls = await ApiCall.countDocuments({ createdAt: { $gte: startDate } });
-      const successfulCalls = await ApiCall.countDocuments({ 
-        createdAt: { $gte: startDate },
-        status: { $lt: 500 }
+      // Use coalesced date (createdAt|timestamp) and normalized status
+      const dateMatchOr = { $or: [ { createdAt: { $gte: startDate } }, { timestamp: { $gte: startDate } } ] } as any;
+      const totalCalls = await ApiCall.countDocuments(dateMatchOr);
+      const successfulCalls = await ApiCall.countDocuments({
+        ...dateMatchOr,
+        $expr: { $lt: [ { $toInt: { $ifNull: ['$status', 0] } }, 500 ] }
       });
       
       return totalCalls > 0 ? (successfulCalls / totalCalls) * 100 : 100;
@@ -576,10 +590,11 @@ export class KPIService {
 
   static async calculateErrorRate(startDate: Date): Promise<number> {
     try {
-      const totalCalls = await ApiCall.countDocuments({ createdAt: { $gte: startDate } });
-      const errorCalls = await ApiCall.countDocuments({ 
-        createdAt: { $gte: startDate },
-        status: { $gte: 400 }
+      const dateMatchOr = { $or: [ { createdAt: { $gte: startDate } }, { timestamp: { $gte: startDate } } ] } as any;
+      const totalCalls = await ApiCall.countDocuments(dateMatchOr);
+      const errorCalls = await ApiCall.countDocuments({
+        ...dateMatchOr,
+        $expr: { $gte: [ { $toInt: { $ifNull: ['$status', 0] } }, 400 ] }
       });
       
       return totalCalls > 0 ? (errorCalls / totalCalls) * 100 : 0;
@@ -593,8 +608,20 @@ export class KPIService {
     try {
       return await ApiCall.aggregate([
         {
+          $addFields: {
+            coalesceDate: { $ifNull: ['$createdAt', '$timestamp'] },
+            statusNum: {
+              $cond: [
+                { $isNumber: '$status' },
+                '$status',
+                { $convert: { input: '$status', to: 'int', onError: 0, onNull: 0 } }
+              ]
+            }
+          }
+        },
+        {
           $match: { 
-            createdAt: { $gte: startDate },
+            coalesceDate: { $gte: startDate },
             responseTime: { $exists: true }
           }
         },
@@ -615,7 +642,7 @@ export class KPIService {
 
   static async getThroughputMetrics(startDate: Date) {
     try {
-      const totalRequests = await ApiCall.countDocuments({ createdAt: { $gte: startDate } });
+      const totalRequests = await ApiCall.countDocuments({ $or: [ { createdAt: { $gte: startDate } }, { timestamp: { $gte: startDate } } ] });
       const timeRangeHours = (Date.now() - startDate.getTime()) / (1000 * 60 * 60);
       
       return {
@@ -633,14 +660,26 @@ export class KPIService {
     try {
       return await ApiCall.aggregate([
         {
+          $addFields: {
+            coalesceDate: { $ifNull: ['$createdAt', '$timestamp'] },
+            statusNum: {
+              $cond: [
+                { $isNumber: '$status' },
+                '$status',
+                { $convert: { input: '$status', to: 'int', onError: 0, onNull: 0 } }
+              ]
+            }
+          }
+        },
+        {
           $match: { 
-            createdAt: { $gte: startDate },
-            status: { $gte: 400 }
+            coalesceDate: { $gte: startDate },
+            statusNum: { $gte: 400 }
           }
         },
         {
           $group: {
-            _id: '$status',
+            _id: '$statusNum',
             count: { $sum: 1 },
             endpoints: { $addToSet: '$endpoint' }
           }
@@ -700,19 +739,31 @@ export class KPIService {
     try {
       return await ApiCall.aggregate([
         {
-          $match: { createdAt: { $gte: startDate } }
+          $addFields: {
+            coalesceDate: { $ifNull: ['$createdAt', '$timestamp'] },
+            statusNum: {
+              $cond: [
+                { $isNumber: '$status' },
+                '$status',
+                { $convert: { input: '$status', to: 'int', onError: 0, onNull: 0 } }
+              ]
+            }
+          }
+        },
+        {
+          $match: { coalesceDate: { $gte: startDate } }
         },
         {
           $group: {
             _id: {
-              year: { $year: '$createdAt' },
-              month: { $month: '$createdAt' },
-              day: { $dayOfMonth: '$createdAt' }
+              year: { $year: '$coalesceDate' },
+              month: { $month: '$coalesceDate' },
+              day: { $dayOfMonth: '$coalesceDate' }
             },
             requests: { $sum: 1 },
             errors: {
               $sum: {
-                $cond: [{ $gte: ['$status', 400] }, 1, 0]
+                $cond: [{ $gte: ['$statusNum', 400] }, 1, 0]
               }
             }
           }
@@ -732,9 +783,10 @@ export class KPIService {
             requests: 1,
             errors: 1,
             successRate: {
-              $multiply: [
-                { $divide: [{ $subtract: ['$requests', '$errors'] }, '$requests'] },
-                100
+              $cond: [
+                { $gt: ['$requests', 0] },
+                { $multiply: [ { $divide: [{ $subtract: ['$requests', '$errors'] }, '$requests'] }, 100 ] },
+                0
               ]
             },
             _id: 0
@@ -942,11 +994,16 @@ export class KPIService {
     try {
       const hourlyData = await ApiCall.aggregate([
         {
-          $match: { createdAt: { $gte: startDate } }
+          $addFields: {
+            coalesceDate: { $ifNull: ['$createdAt', '$timestamp'] }
+          }
+        },
+        {
+          $match: { coalesceDate: { $gte: startDate } }
         },
         {
           $group: {
-            _id: { $hour: '$createdAt' },
+            _id: { $hour: '$coalesceDate' },
             requests: { $sum: 1 }
           }
         },

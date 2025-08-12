@@ -53,12 +53,12 @@ const EnhancedLandingPage: React.FC<EnhancedLandingPageProps> = ({
     // Hero Section with Urgency
     hero: {
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 30%, #3b82f6 70%, #6366f1 100%)',
+      background: 'linear-gradient(135deg, #0b1020 0%, #111827 40%, #0b1020 100%)',
       display: 'flex',
       flexDirection: 'column' as const,
       alignItems: 'center',
       justifyContent: 'center',
-      color: 'white',
+      color: '#e5e7eb',
       padding: '20px',
       textAlign: 'center' as const,
       position: 'relative' as const
@@ -88,23 +88,19 @@ const EnhancedLandingPage: React.FC<EnhancedLandingPageProps> = ({
     },
 
     heroTitle: {
-      fontSize: 'clamp(2.5rem, 6vw, 4.5rem)',
-      fontWeight: '900',
+      fontSize: 'clamp(2.5rem, 6vw, 4.2rem)',
+      fontWeight: 800,
       marginBottom: '1rem',
       lineHeight: '1.1',
-      textShadow: '0 4px 12px rgba(0,0,0,0.4)',
-      background: 'linear-gradient(45deg, #fbbf24, #f59e0b, #ff6b35)',
-      backgroundClip: 'text',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
+      color: '#e5e7eb',
+      letterSpacing: '0.5px'
     },
 
     heroSubtitle: {
-      fontSize: 'clamp(1.3rem, 3vw, 1.8rem)',
-      marginBottom: '1.5rem',
-      fontWeight: '600',
-      color: '#fbbf24',
-      textShadow: '0 2px 4px rgba(0,0,0,0.3)',
+      fontSize: 'clamp(1.2rem, 3vw, 1.7rem)',
+      marginBottom: '1.2rem',
+      fontWeight: 600,
+      color: '#9ca3af'
     },
 
     heroDescription: {
@@ -127,21 +123,20 @@ const EnhancedLandingPage: React.FC<EnhancedLandingPageProps> = ({
 
     // CTA Buttons
     premiumCta: {
-      padding: '20px 40px',
-      fontSize: '1.4rem',
-      fontWeight: 'bold',
-      background: 'linear-gradient(45deg, #ff6b35, #fbbf24)',
+      padding: '16px 32px',
+      fontSize: '1.1rem',
+      fontWeight: 600,
+      background: 'linear-gradient(90deg, #2563eb, #1d4ed8)',
       color: 'white',
       border: 'none',
-      borderRadius: '50px',
+      borderRadius: '12px',
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      boxShadow: '0 8px 30px rgba(255, 107, 53, 0.4)',
-      textTransform: 'uppercase' as const,
-      letterSpacing: '1px',
+      transition: 'all 0.2s ease',
+      boxShadow: '0 10px 28px rgba(37, 99, 235, 0.35)',
+      letterSpacing: '0.3px',
       position: 'relative' as const,
       overflow: 'hidden' as const,
-      marginBottom: '1rem',
+      marginBottom: '0.75rem',
     },
 
     freeCta: {

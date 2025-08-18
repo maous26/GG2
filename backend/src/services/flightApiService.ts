@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import { ApiCall } from '../models/ApiCall';
 import { StrategicRoute } from '../utils/strategicRoutes';
+import { FlightCacheService } from './flightCacheService';
 
 // FlightAPI Types based on the provided documentation
 export interface FlightAPIItinerary {
@@ -197,6 +198,12 @@ export class FlightAPIService {
         return [];
       }
 
+      // 🎯 OPTIMISATION 1: Cache intelligent (évite appels redondants)
+      const cachedResults = await FlightCacheService.getCachedResults(route, options);
+      if (cachedResults) {
+        return cachedResults;
+      }
+
       const {
         departureDate = this.getDefaultDepartureDate(),
         returnDate,
@@ -226,6 +233,9 @@ export class FlightAPIService {
 
       // Convert FlightAPI response to our internal format
       const flights = this.convertResponseToFlightPrices(response, options, route);
+
+      // 🎯 OPTIMISATION 1: Mise en cache des résultats
+      await FlightCacheService.cacheResults(route, options, flights);
 
       // Log API usage including route for per-route analytics
       await this.logApiUsage({
@@ -270,7 +280,7 @@ export class FlightAPIService {
     currency: string;
     region: string;
   }): Promise<FlightAPIResponse> {
-    const url = `${this.baseUrl}/roundtrip/${this.apiKey}/${params.departure_airport_code}/${params.arrival_airport_code}/${params.departure_date}/${params.arrival_date}/${params.number_of_adults}/${params.number_of_childrens}/${params.number_of_infants}/${params.cabin_class}/${params.currency}`;
+    const url = `${this.baseUrl}/roundtrip/${this.apiKey}/${params.departure_airport_code}/${params.arrival_airport_code}/${params.departure_date}/${params.arrival_date}/${params.number_of_adults}/${params.number_of_childrens}/${params.number_of_infants}/${params.cabin_class}/${params.currency}/${params.region}`;
     
     const response = await this.makeApiCall<FlightAPIResponse>(url);
     return response;

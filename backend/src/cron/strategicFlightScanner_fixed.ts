@@ -6,6 +6,8 @@ import User from '../models/User';
 import { FlightAPIService, FlightDeal } from '../services/flightApiService';
 import { IntelligentPricingService } from '../services/intelligentPricingService';
 import { EnhancedEmailService } from '../services/enhancedEmailService';
+import { PrimeHoursOptimizer } from '../services/primeHoursOptimizer';
+import { FlightCacheService } from '../services/flightCacheService';
 import { 
   STRATEGIC_ROUTES, 
   getRoutesByTier, 
@@ -166,10 +168,20 @@ export class StrategicFlightScanner {
     const startTime = Date.now();
 
     try {
+      // 🎯 OPTIMISATION 2: Prime Hours detection
+      PrimeHoursOptimizer.logOptimization();
+      const primeMultiplier = PrimeHoursOptimizer.getPrimeHourMultiplier();
+      
       const routes = getRoutesByTier(tier);
       const routesToScan = limitRoutes ? routes.slice(0, limitRoutes) : routes;
       
-      console.log(`🔍 Scanning ${routesToScan.length} routes for Tier ${tier}`);
+      // Ajuster le nombre de routes selon les heures prime
+      const adjustedLimit = primeMultiplier > 1.0 ? 
+        Math.floor(routesToScan.length * primeMultiplier) : 
+        routesToScan.length;
+      const finalRoutes = routesToScan.slice(0, Math.min(adjustedLimit, routesToScan.length));
+      
+      console.log(`🔍 Scanning ${finalRoutes.length} routes for Tier ${tier} ${primeMultiplier > 1.0 ? `(Prime Hours x${primeMultiplier.toFixed(2)})` : ''}`);
       
       let dealsFoundInScan = 0;
       let apiCallsInScan = 0;
@@ -181,7 +193,7 @@ export class StrategicFlightScanner {
       const dailyBudget = Math.floor(cfg.monthlyCalls / 30);
       let remainingDaily = dailyBudget - (await ApiBudgetService.getCounters()).day;
 
-      for (const strategicRoute of routesToScan) {
+      for (const strategicRoute of finalRoutes) {
         try {
           if (remainingDaily - strategicRoute.estimatedCallsPerScan < 0) {
             console.log(`⛔ Budget daily reached, skipping remaining routes for Tier ${tier}`);
